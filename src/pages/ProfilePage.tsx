@@ -8,13 +8,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { DataExport } from '@/components/DataExport';
-import { WidgetManager } from '@/components/WidgetManager';
+
 import { useSettingsStore } from '@/stores/settingsStore';
-import { 
-  Settings, 
-  Bell, 
-  Shield, 
-  HelpCircle, 
+import {
+  Settings,
+  Shield,
+  HelpCircle,
   LogOut,
   ChevronRight,
   Crown,
@@ -29,8 +28,7 @@ import {
   Trash2,
   Flame,
   Award,
-  CalendarCheck,
-  LayoutGrid
+  CalendarCheck
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -42,7 +40,7 @@ export function ProfilePage() {
   const { books, currentBook, setCurrentBook, createBook, canCreateBookType, generateInviteCode, joinBookByCode, isBookOwner, deleteBook, exitBook } = useBookStore();
   const { subscriptions } = useSubscriptionStore();
   const { checkInStreak, totalCheckIns, longestStreak, lastCheckInDate, checkIn } = useSettingsStore();
-  
+
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -59,25 +57,25 @@ export function ProfilePage() {
   const [selectedBookForInvite, setSelectedBookForInvite] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
-  const [isWidgetOpen, setIsWidgetOpen] = useState(false);
+
   const [isCheckingIn, setIsCheckingIn] = useState(false);
-  
+
   // 定期刷新账本数据（每3秒）
   useEffect(() => {
     if (!user) return;
-    
+
     // 立即刷新一次
     useBookStore.getState().fetchBooks(user.id);
-    
+
     // 设置轮询
     const intervalId = setInterval(() => {
       useBookStore.getState().fetchBooks(user.id);
     }, 3000);
-    
+
     return () => clearInterval(intervalId);
   }, [user?.id]);
-  
-  const activeSubscription = user 
+
+  const activeSubscription = user
     ? subscriptions.find(s => s.userId === user.id && s.status === 'ACTIVE')
     : null;
 
@@ -100,7 +98,7 @@ export function ProfilePage() {
 
   const handleSaveProfile = () => {
     updateUser({ nickname });
-    
+
     setIsEditProfileOpen(false);
   };
 
@@ -129,10 +127,10 @@ export function ProfilePage() {
       const reader = new FileReader();
       reader.onload = async (event) => {
         const base64 = event.target?.result as string;
-        
+
         // 更新用户头像（存储 base64）
         await updateUser({ avatar: base64 });
-        
+
         setIsAvatarLoading(false);
       };
       reader.readAsDataURL(file);
@@ -145,14 +143,14 @@ export function ProfilePage() {
   const handleLogout = () => {
     if (confirm('确定要退出登录吗？')) {
       logout();
-      
+
     }
   };
 
   // 处理创建新账本
   const handleCreateBook = async () => {
     if (!user) return;
-    
+
     const check = canCreateBookType(user.id, selectedBookType);
     if (!check.canCreate) {
       return;
@@ -162,7 +160,7 @@ export function ProfilePage() {
     try {
       const book = await createBook(newBookName || '', selectedBookType, user.id);
       if (book) {
-        
+
         setIsCreateBookOpen(false);
         setNewBookName('');
         setSelectedBookType('PERSONAL');
@@ -205,7 +203,7 @@ export function ProfilePage() {
       console.log('Attempting to join with code:', joinCode.trim());
       const book = await joinBookByCode(joinCode.trim(), user.id);
       if (book) {
-        
+
         setIsJoinBookOpen(false);
         setJoinCode('');
       } else {
@@ -223,10 +221,10 @@ export function ProfilePage() {
   const handleDeleteBook = async (bookId: string, bookName: string) => {
     if (!user) return;
     if (!confirm(`确定要删除「${bookName}」吗？删除后无法恢复！`)) return;
-    
+
     try {
       await deleteBook(bookId, user.id);
-      
+
     } catch (error) {
       toast.error('删除失败');
     }
@@ -236,11 +234,11 @@ export function ProfilePage() {
   const handleExitBook = async (bookId: string, bookName: string) => {
     if (!user) return;
     if (!confirm(`确定要退出「${bookName}」吗？`)) return;
-    
+
     try {
       const success = await exitBook(bookId, user.id);
       if (success) {
-        
+
       } else {
         toast.error('退出失败，创建者只能删除不能退出');
       }
@@ -264,10 +262,10 @@ export function ProfilePage() {
     setIsCheckingIn(true);
     // 模拟网络请求
     await new Promise(resolve => setTimeout(resolve, 500));
-    
+
     const success = checkIn();
     if (success) {
-      
+
     } else {
       toast.info('今天已经打卡啦，明天再来吧！');
     }
@@ -276,16 +274,16 @@ export function ProfilePage() {
   };
   const getAvailableBookTypes = (): { type: BookType; label: string; icon: typeof User; disabled: boolean; message?: string }[] => {
     if (!user) return [];
-    
+
     const types: BookType[] = ['PERSONAL', 'COUPLE', 'FAMILY'];
     return types.map(type => {
       // 使用本地检查（快速响应）
       const userBooks = books.filter(b => b.createdBy === user.id && b.type === type);
       const existingBook = userBooks.find(b => b.type === type);
-      
+
       let disabled = false;
       let message = '';
-      
+
       if (existingBook) {
         disabled = true;
         message = `您已有一个${type === 'COUPLE' ? '情侣' : type === 'FAMILY' ? '家庭' : '个人'}账本了`;
@@ -304,7 +302,7 @@ export function ProfilePage() {
           message = '需要开通家庭会员才能创建家庭账本';
         }
       }
-      
+
       const labels: Record<BookType, string> = {
         PERSONAL: '个人账本',
         COUPLE: '情侣账本',
@@ -353,30 +351,20 @@ export function ProfilePage() {
       label: '数据导出',
       onClick: () => setIsExportOpen(true)
     },
+
     {
-      icon: LayoutGrid,
-      label: '桌面小组件',
-      value: '去添加',
-      onClick: () => setIsWidgetOpen(true)
-    },
-    {
-      icon: Bell,
-      label: '消息通知',
-      onClick: () => toast.info('暂无新消息')
-    },
-    { 
-      icon: Shield, 
-      label: '隐私安全', 
+      icon: Shield,
+      label: '隐私安全',
       onClick: () => toast.info('密码加密存储，数据安全有保障')
     },
-    { 
-      icon: Settings, 
-      label: '通用设置', 
+    {
+      icon: Settings,
+      label: '通用设置',
       onClick: () => toast.info('设置功能开发中')
     },
-    { 
-      icon: HelpCircle, 
-      label: '帮助与反馈', 
+    {
+      icon: HelpCircle,
+      label: '帮助与反馈',
       onClick: () => toast.info('如有问题请联系客服')
     },
   ];
@@ -387,16 +375,16 @@ export function ProfilePage() {
       <div className="bg-gradient-to-br from-teal-500 via-cyan-500 to-blue-600 pt-12 pb-20">
         <div className="px-4">
           <h1 className="text-xl font-bold text-white mb-6">个人中心</h1>
-          
+
           {/* 用户信息卡片 */}
           <Card className="border-0 shadow-xl bg-white/95 backdrop-blur-sm">
             <CardContent className="p-6">
               <div className="flex items-center gap-4">
                 <div className="relative">
                   {user?.avatar ? (
-                    <img 
-                      src={user.avatar} 
-                      alt="avatar" 
+                    <img
+                      src={user.avatar}
+                      alt="avatar"
                       className="w-20 h-20 rounded-full object-cover border-2 border-white shadow-lg"
                     />
                   ) : (
@@ -427,7 +415,7 @@ export function ProfilePage() {
                     {user?.nickname || `用户${user?.phone?.slice(-4)}`}
                   </h2>
                   <p className="text-gray-500 text-sm">{user?.phone}</p>
-                  
+
                   {/* 会员标识 */}
                   {activeSubscription ? (
                     <div className="flex flex-col gap-1 mt-2">
@@ -543,8 +531,8 @@ export function ProfilePage() {
           <DialogHeader>
             <DialogTitle>会员中心</DialogTitle>
           </DialogHeader>
-          <SubscriptionPlans 
-            onClose={() => setIsSubscriptionOpen(false)} 
+          <SubscriptionPlans
+            onClose={() => setIsSubscriptionOpen(false)}
           />
         </DialogContent>
       </Dialog>
@@ -580,7 +568,7 @@ export function ProfilePage() {
                   <button
                     onClick={() => {
                       setCurrentBook(book);
-                      
+
                     }}
                     className="flex items-center gap-3 flex-1 text-left"
                   >
@@ -610,7 +598,7 @@ export function ProfilePage() {
                     </div>
                   )}
                 </div>
-                
+
                 {/* 邀请码区域 - 只有创建者显示 */}
                 {book.type !== 'PERSONAL' && isBookOwner(book.id, user?.id || '') ? (
                   <div className="mt-3 pt-3 border-t border-gray-200">
@@ -626,7 +614,7 @@ export function ProfilePage() {
                             variant="ghost"
                             onClick={() => {
                               navigator.clipboard.writeText(generatedCode);
-                              
+
                             }}
                           >
                             复制
@@ -657,23 +645,23 @@ export function ProfilePage() {
                     </p>
                   </div>
                 )}
-                
+
                 {/* 操作按钮区域 */}
                 <div className="mt-3 pt-3 border-t border-gray-200 flex gap-2">
                   {isBookOwner(book.id, user?.id || '') ? (
                     // 创建者显示删除按钮
                     (() => {
                       // 检查是否是最后一个个人账本
-                      const isLastPersonalBook = book.type === 'PERSONAL' && 
+                      const isLastPersonalBook = book.type === 'PERSONAL' &&
                         books.filter(b => b.type === 'PERSONAL').length <= 1;
-                      
+
                       return (
                         <Button
                           variant="outline"
                           size="sm"
                           className={cn(
                             "flex-1",
-                            isLastPersonalBook 
+                            isLastPersonalBook
                               ? "text-gray-400 border-gray-200 cursor-not-allowed"
                               : "text-red-500 border-red-200 hover:bg-red-50"
                           )}
@@ -703,10 +691,10 @@ export function ProfilePage() {
                 </div>
               </div>
             ))}
-            
+
             <div className="grid grid-cols-2 gap-2">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="py-4 border-dashed border-teal-200 text-teal-600 hover:bg-teal-50"
                 onClick={() => {
                   setIsBooksOpen(false);
@@ -716,8 +704,8 @@ export function ProfilePage() {
                 <Plus className="w-4 h-4 mr-2" />
                 创建账本
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="py-4 border-dashed border-blue-200 text-blue-600 hover:bg-blue-50"
                 onClick={() => {
                   setIsBooksOpen(false);
@@ -801,8 +789,8 @@ export function ProfilePage() {
               </div>
             )}
 
-            <Button 
-              onClick={handleCreateBook} 
+            <Button
+              onClick={handleCreateBook}
               className="w-full bg-teal-500 hover:bg-teal-600"
               disabled={isCreating}
             >
@@ -819,13 +807,7 @@ export function ProfilePage() {
         </DialogContent>
       </Dialog>
 
-      {/* 小组件管理弹窗 */}
-      <WidgetManager
-        open={isWidgetOpen}
-        onClose={() => setIsWidgetOpen(false)}
-      />
 
-      {/* 打卡弹窗 */}
       <Dialog open={isCheckInOpen} onOpenChange={setIsCheckInOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -848,8 +830,8 @@ export function ProfilePage() {
                 {isCheckedInToday() ? '今日已打卡' : '今日未打卡'}
               </h3>
               <p className="text-gray-500 mt-1">
-                {isCheckedInToday() 
-                  ? '明天继续加油！' 
+                {isCheckedInToday()
+                  ? '明天继续加油！'
                   : '坚持记账，养成理财好习惯'}
               </p>
             </div>
@@ -923,7 +905,7 @@ export function ProfilePage() {
                 请输入对方分享的6位邀请码
               </p>
             </div>
-            
+
             <div className="space-y-2">
               <Label>邀请码</Label>
               <Input
@@ -935,8 +917,8 @@ export function ProfilePage() {
               />
             </div>
 
-            <Button 
-              onClick={handleJoinBook} 
+            <Button
+              onClick={handleJoinBook}
               className="w-full bg-blue-500 hover:bg-blue-600"
               disabled={isJoining || joinCode.length !== 6}
             >

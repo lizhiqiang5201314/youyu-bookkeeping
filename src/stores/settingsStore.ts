@@ -3,12 +3,6 @@ import { persist } from 'zustand/middleware';
 import { storage } from '@/services/storage';
 
 interface SettingsState {
-  // 通知设置
-  dailyReminder: boolean;
-  reminderTime: string; // HH:mm 格式
-  budgetAlert: boolean;
-  budgetAlertThreshold: number; // 百分比
-
   // 打卡成就
   checkInStreak: number; // 连续打卡天数
   lastCheckInDate: string | null; // 最后打卡日期 YYYY-MM-DD
@@ -16,10 +10,6 @@ interface SettingsState {
   longestStreak: number; // 最长连续打卡
 
   // Actions
-  setDailyReminder: (enabled: boolean) => void;
-  setReminderTime: (time: string) => void;
-  setBudgetAlert: (enabled: boolean) => void;
-  setBudgetAlertThreshold: (threshold: number) => void;
   checkIn: () => boolean; // 返回是否打卡成功
   resetCheckInStreak: () => void;
 }
@@ -40,19 +30,10 @@ const getToday = () => {
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set, get) => ({
-      dailyReminder: true,
-      reminderTime: '21:00',
-      budgetAlert: true,
-      budgetAlertThreshold: 80,
       checkInStreak: 0,
       lastCheckInDate: null,
       totalCheckIns: 0,
       longestStreak: 0,
-
-      setDailyReminder: (enabled) => set({ dailyReminder: enabled }),
-      setReminderTime: (time) => set({ reminderTime: time }),
-      setBudgetAlert: (enabled) => set({ budgetAlert: enabled }),
-      setBudgetAlertThreshold: (threshold) => set({ budgetAlertThreshold: threshold }),
 
       checkIn: () => {
         const today = getToday();
