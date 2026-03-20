@@ -29,21 +29,24 @@ jobs:
       
     - name: Deploy to server
       env:
+        PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         HOST: ${{ secrets.REMOTE_HOST }}
         USER: ${{ secrets.REMOTE_USER }}
-        PASS: ${{ secrets.REMOTE_PASSWORD }}
       run: |
-        # 安装 sshpass
-        sudo apt-get update && sudo apt-get install -y sshpass
+        # 创建 SSH 目录
+        mkdir -p ~/.ssh
+        
+        # 写入私钥
+        echo "$PRIVATE_KEY" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
         
         # 添加服务器到 known_hosts
-        mkdir -p ~/.ssh
         ssh-keyscan -H $HOST >> ~/.ssh/known_hosts 2>/dev/null || true
         
-        # 使用密码方式部署
-        sshpass -p "$PASS" rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" dist/ $USER@$HOST:/var/www/youyu/
+        # 部署文件
+        rsync -avz -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" --delete dist/ $USER@$HOST:/var/www/youyu/
         
         # 重启 Nginx
-        sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no $USER@$HOST "sudo systemctl restart nginx"
+        ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no $USER@$HOST "sudo systemctl restart nginx"
         
         echo "✅ 部署完成"
