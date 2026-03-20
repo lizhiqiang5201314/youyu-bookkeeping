@@ -1,0 +1,50 @@
+#!/bin/bash
+# 最简单部署方案 - 只上传 dist 文件夹
+
+echo "🚀 有鱼记账 - 超简单部署"
+echo ""
+echo "只需要 3 步："
+echo ""
+echo "第 1 步：本地构建"
+echo "   npm install"
+echo "   npm run build"
+echo ""
+echo "第 2 步：只上传 dist 文件夹到服务器"
+echo "   scp -r dist root@你的服务器IP:/var/www/youyu/"
+echo ""
+echo "第 3 步：服务器上运行以下命令："
+echo ""
+
+cat << 'DEPLOY'
+# 安装 Nginx
+sudo apt update
+sudo apt install -y nginx
+
+# 创建网站目录
+sudo mkdir -p /var/www/youyu
+sudo rm -rf /var/www/youyu/*
+
+# 把上传的 dist 文件放进去（手动执行）
+# sudo cp -r /root/dist/* /var/www/youyu/
+
+# 配置 Nginx
+sudo tee /etc/nginx/sites-enabled/default > /dev/null << 'EOF'
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    
+    root /var/www/youyu;
+    index index.html index.htm;
+    
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+EOF
+
+# 重启 Nginx
+sudo nginx -t
+sudo systemctl restart nginx
+
+echo "✅ 部署完成！访问 http://你的服务器IP"
+DEPLOY
