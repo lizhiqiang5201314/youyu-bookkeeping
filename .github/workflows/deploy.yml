@@ -32,24 +32,29 @@ jobs:
         HOST: ${{ secrets.REMOTE_HOST }}
         USER: ${{ secrets.REMOTE_USER }}
       run: |
-        # 安装 SSH 客户端
-        sudo apt-get update -qq
-        sudo apt-get install -y -qq openssh-client rsync
-        
-        # 设置 SSH 密钥
+        # 设置 SSH
         mkdir -p ~/.ssh
         echo "$SSH_KEY" > ~/.ssh/deploy_key
         chmod 600 ~/.ssh/deploy_key
         
-        # 添加主机到 known_hosts
-        ssh-keyscan -H $HOST >> ~/.ssh/known_hosts 2>/dev/null || true
+        # 压缩 dist 目录
+        echo "📦 压缩文件..."
+        tar -czvf dist.tar.gz dist/
         
-        # 部署文件
-        echo "📤 正在部署到服务器..."
-        rsync -avz --delete -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" dist/ $USER@$HOST:/var/www/youyu/
+        # 上传并解压
+        echo "📤 上传到服务器..."
+        ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $USER@$HOST "mkdir -p /var/www/youyu"
+        scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null dist.tar.gz $USER@$HOST:/tmp/
         
-        # 重启 Nginx
-        echo "🔄 重启 Nginx..."
-        ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $USER@$HOST "sudo systemctl restart nginx"
+        echo "📂 解压并部署..."
+        ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $USER@$HOST "
+          cd /tmp &&
+          rm -rf /var/www/youyu/* &&
+          tar -xzvf dist.tar.gz &&
+          cp -r dist/* /var/www/youyu/ &&
+          rm -rf dist dist.tar.gz &&
+          sudo systemctl restart nginx &&
+          echo '✅ 部署完成'
+        "
         
-        echo "✅ 部署完成！"
+        echo "✅ GitHub Actions 部署成功！"
