@@ -25,12 +25,12 @@ jobs:
     - name: Build project
       run: npm run build
       
-    - name: Deploy to server
+    - name: Deploy to server via SSH
       uses: appleboy/scp-action@master
       with:
         host: ${{ secrets.REMOTE_HOST }}
         username: ${{ secrets.REMOTE_USER }}
-        password: ${{ secrets.REMOTE_PASSWORD }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
         source: "dist/"
         target: "/var/www/youyu/"
         strip_components: 1
@@ -41,7 +41,7 @@ jobs:
       with:
         host: ${{ secrets.REMOTE_HOST }}
         username: ${{ secrets.REMOTE_USER }}
-        password: ${{ secrets.REMOTE_PASSWORD }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
         script: |
           sudo systemctl restart nginx
           echo "✅ 部署完成于 $(date)"
