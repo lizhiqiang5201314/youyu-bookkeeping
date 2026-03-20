@@ -17,7 +17,6 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '20'
-        cache: 'npm'
         
     - name: Clean install dependencies
       run: |
@@ -27,21 +26,30 @@ jobs:
     - name: Build project
       run: npm run build
       
-    - name: Upload to server via SFTP
-      uses: wlixcc/SFTP-Deploy-Action@v1.2.4
-      with:
-        username: ${{ secrets.REMOTE_USER }}
-        server: ${{ secrets.REMOTE_HOST }}
-        ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
-        local_path: './dist/*'
-        remote_path: '/var/www/youyu/'
+    - name: Deploy to server
+      env:
+        SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        HOST: ${{ secrets.REMOTE_HOST }}
+        USER: ${{ secrets.REMOTE_USER }}
+      run: |
+        # 安装 SSH 客户端
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq openssh-client rsync
         
-    - name: Restart Nginx
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.REMOTE_HOST }}
-        username: ${{ secrets.REMOTE_USER }}
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        script: |
-          sudo systemctl restart nginx
-          echo "✅ 部署完成"
+        # 设置 SSH 密钥
+        mkdir -p ~/.ssh
+        echo "$SSH_KEY" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+        
+        # 添加主机到 known_hosts
+        ssh-keyscan -H $HOST >> ~/.ssh/known_hosts 2>/dev/null || true
+        
+        # 部署文件
+        echo "📤 正在部署到服务器..."
+        rsync -avz --delete -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" dist/ $USER@$HOST:/var/www/youyu/
+        
+        # 重启 Nginx
+        echo "🔄 重启 Nginx..."
+        ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $USER@$HOST "sudo systemctl restart nginx"
+        
+        echo "✅ 部署完成！"
