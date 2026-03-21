@@ -1,8 +1,17 @@
 import { createClient } from '@supabase/supabase-js'
 
-// 硬编码配置（部署时不受环境变量影响）
-const supabaseUrl = 'https://rsytwtcavbbmbjchjhkk.supabase.co'
-const supabaseKey = 'sb_publishable_iqqg-CoHFg0C8E4Oqz_PwQ_WF_MquAT'
+// 从环境变量读取配置
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+// 验证配置
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error(
+    'Missing Supabase configuration. Please check your .env file:\n' +
+    '- VITE_SUPABASE_URL\n' +
+    '- VITE_SUPABASE_ANON_KEY'
+  )
+}
 
 export const supabase = createClient(supabaseUrl, supabaseKey)
 
