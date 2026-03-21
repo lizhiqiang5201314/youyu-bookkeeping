@@ -212,33 +212,33 @@ export function QuickAddModal({ open, onClose }: QuickAddModalProps) {
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const categories = getCategoriesByType(type);
+  const categories = useMemo(() => {
+    if (!currentBook) return [];
+    return getCategoriesByType(type);
+  }, [currentBook, type, getCategoriesByType]);
+  
+  // 强制刷新分类
+  const [categoriesVersion, setCategoriesVersion] = useState(0);
   
   useEffect(() => {
-    if (open) {
+    if (open && currentBook) {
       setAmount('');
       setNote('');
       setRecordDate(new Date().toISOString().split('T')[0]);
       setShowNoteInput(false);
-      // 确保分类已加载
-      if (currentBook) {
-        fetchCategories(currentBook.id);
-      }
-      // 设置默认分类（根据当前类型）
-      const cats = getCategoriesByType(type);
-      if (cats.length > 0) {
-        setSelectedCategoryId(cats[0].id);
-      }
+      // 强制重新加载分类
+      fetchCategories(currentBook.id).then(() => {
+        setCategoriesVersion(v => v + 1);
+      });
     }
-  }, [open, type, currentBook, fetchCategories]);
+  }, [open, currentBook?.id]);
   
   // 类型切换时自动选择默认分类
   useEffect(() => {
-    const cats = getCategoriesByType(type);
-    if (cats.length > 0) {
-      setSelectedCategoryId(cats[0].id);
+    if (categories.length > 0) {
+      setSelectedCategoryId(categories[0].id);
     }
-  }, [type]);
+  }, [type, categoriesVersion, categories]);
 
   const handleNumberPress = (num: string) => {
     if (num === '.' && amount.includes('.')) return;
@@ -337,10 +337,6 @@ export function QuickAddModal({ open, onClose }: QuickAddModalProps) {
   };
 
   // categories 已经是按 type 过滤后的结果，直接使用即可
-  console.log('DEBUG - currentBook:', currentBook?.id, currentBook?.name);
-  console.log('DEBUG - type:', type);
-  console.log('DEBUG - categories count:', categories.length);
-  console.log('DEBUG - categories:', categories.map(c => ({ id: c.id, name: c.name, type: c.type })));
 
   return (
     <Dialog open={open} onOpenChange={onClose}>

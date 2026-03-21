@@ -13,6 +13,7 @@ interface BookState {
   books: Book[];
   currentBook: Book | null;
   categories: Category[];
+  categoriesMap: Record<string, Category[]>; // 按账本ID存储分类
   isLoading: boolean;
   isSyncing: boolean;
   
@@ -33,6 +34,7 @@ interface BookState {
   // Category
   fetchCategories: (bookId: string) => Promise<void>;
   getCategoriesByType: (type: 'INCOME' | 'EXPENSE') => Category[];
+  getCategoriesByTypeForBook: (bookId: string, type: 'INCOME' | 'EXPENSE') => Category[];
   
   // 检查
   canCreateBookType: (userId: string, type: BookType) => { canCreate: boolean; message?: string };
@@ -46,6 +48,7 @@ export const useBookStore = create<BookState>()(
       books: [],
       currentBook: null,
       categories: [],
+      categoriesMap: {},
       isLoading: false,
       isSyncing: false,
 
@@ -308,6 +311,7 @@ export const useBookStore = create<BookState>()(
             books: [...state.books, book],
             currentBook: book,
             categories: defaultCategories,
+            categoriesMap: { ...state.categoriesMap, [book.id]: defaultCategories },
           }));
 
           return book;
@@ -551,6 +555,7 @@ export const useBookStore = create<BookState>()(
 
       // 加载分类
       fetchCategories: async (bookId) => {
+        if (!bookId) return;
         try {
           const { data } = await supabase
             .from('categories')
@@ -575,7 +580,11 @@ export const useBookStore = create<BookState>()(
               await db.categories.put({ ...cat, synced: true, lastModified: Date.now() });
             }
 
-            set({ categories });
+            set(state => ({
+              categoriesMap: { ...state.categoriesMap, [bookId]: categories },
+              // 同时更新当前categories（如果是当前账本）
+              categories: state.currentBook?.id === bookId ? categories : state.categories,
+            }));
           }
         } catch (error) {
           console.error('Fetch categories error:', error);
@@ -583,7 +592,16 @@ export const useBookStore = create<BookState>()(
       },
 
       getCategoriesByType: (type) => {
-        return get().categories.filter(c => c.type === type);
+        const { currentBook, categoriesMap } = get();
+        if (!currentBook) return [];
+        const cats = categoriesMap[currentBook.id] || [];
+        return cats.filter(c => c.type === type);
+      },
+
+      getCategoriesByTypeForBook: (bookId, type) => {
+        const { categoriesMap } = get();
+        const cats = categoriesMap[bookId] || [];
+        return cats.filter(c => c.type === type);
       },
 
       isBookOwner: (bookId, userId) => {

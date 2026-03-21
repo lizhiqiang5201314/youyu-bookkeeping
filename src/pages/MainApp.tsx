@@ -6,6 +6,7 @@ import { ProfilePage } from './ProfilePage';
 import { BudgetPage } from './BudgetPage';
 import { QuickAddModal } from '@/components/QuickAddModal';
 import { Button } from '@/components/ui/button';
+import { useBookStore } from '@/stores/bookStore';
 import { 
   Home, 
   PieChart, 
@@ -18,6 +19,13 @@ import { cn } from '@/lib/utils';
 export function MainApp() {
   const [currentPage, setCurrentPage] = useState<'home' | 'statistics' | 'budget' | 'assets' | 'profile'>('home');
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const [quickAddKey, setQuickAddKey] = useState(0);
+  const { currentBook } = useBookStore();
+
+  const handleOpenQuickAdd = () => {
+    setQuickAddKey(prev => prev + 1); // 强制重新渲染
+    setIsQuickAddOpen(true);
+  };
 
   const renderPage = () => {
     switch (currentPage) {
@@ -61,7 +69,7 @@ export function MainApp() {
               return (
                 <Button
                   key={item.key}
-                  onClick={() => setIsQuickAddOpen(true)}
+                  onClick={handleOpenQuickAdd}
                   className="w-14 h-14 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 shadow-lg shadow-teal-500/30 -mt-6"
                 >
                   <Plus className="w-6 h-6" />
@@ -92,6 +100,7 @@ export function MainApp() {
 
       {/* 快捷记账弹窗 */}
       <QuickAddModal
+        key={`${currentBook?.id || 'no-book'}-${quickAddKey}`}
         open={isQuickAddOpen}
         onClose={() => setIsQuickAddOpen(false)}
       />
