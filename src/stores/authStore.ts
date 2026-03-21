@@ -2,8 +2,9 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { storage } from '@/services/storage';
 import { supabase } from '@/services/supabase';
+import { db } from '@/services/db';
 import { useSubscriptionStore } from './subscriptionStore';
-import type { User } from '@/types';
+import type { User, Category } from '@/types';
 import bcrypt from 'bcryptjs';
 
 interface AuthState {
@@ -11,6 +12,7 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  isDataPreloaded: boolean; // 数据是否已预加载
   
   // Actions
   login: (phone: string, password: string) => Promise<boolean>;
@@ -18,6 +20,7 @@ interface AuthState {
   logout: () => void;
   updateUser: (user: Partial<User>) => Promise<void>;
   checkSession: () => Promise<void>;
+  preloadUserData: (userId: string) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -27,6 +30,7 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: false,
       error: null,
+      isDataPreloaded: false,
 
       // 登录
       login: async (phone: string, password: string) => {
@@ -74,6 +78,9 @@ export const useAuthStore = create<AuthState>()(
           
           // 登录成功后同步会员信息
           await useSubscriptionStore.getState().fetchSubscriptions(user.id);
+          
+          // 预加载账本和分类到本地数据库
+          await get().preloadUserData(user.id);
           
           console.log('🎉 登录成功，用户ID:', user.id);
           return true;
@@ -141,6 +148,9 @@ export const useAuthStore = create<AuthState>()(
           // 注册成功后同步会员信息（初始为空）
           await useSubscriptionStore.getState().fetchSubscriptions(user.id);
           
+          // 新用户预加载数据（可能没有账本，但保持逻辑一致）
+          await get().preloadUserData(user.id);
+          
           console.log('🎉 注册成功，用户ID:', user.id);
           return true;
         } catch (error: any) {
@@ -155,6 +165,7 @@ export const useAuthStore = create<AuthState>()(
           user: null,
           isAuthenticated: false,
           error: null,
+          isDataPreloaded: false,
         });
       },
 
@@ -182,9 +193,102 @@ export const useAuthStore = create<AuthState>()(
         // persist 会自动处理，这里不需要额外逻辑
         console.log('检查本地session...');
       },
+
+      // 预加载用户数据到本地数据库
+      preloadUserData: async (userId: string) => {
+        if (!userId) return;
+        console.log('🔄 开始预加载用户数据...');
+        
+        try {
+          // 1. 加载所有账本
+          const [createdBooks, memberBooks] = await Promise.all([
+            supabase.from('books').select('*').eq('created_by', userId),
+            supabase.from('book_members').select('book_id').eq('user_id', userId)
+          ]);
+
+          let allBooks: any[] = createdBooks.data || [];
+          
+          if (memberBooks.data?.length) {
+            const bookIds = memberBooks.data.map(m => m.book_id);
+            const { data: sharedBooks } = await supabase
+              .from('books')
+              .select('*')
+              .in('id', bookIds);
+            if (sharedBooks) {
+              allBooks = [...allBooks, ...sharedBooks];
+            }
+          }
+
+          // 去重
+          const uniqueBooks = Array.from(new Map(allBooks.map(b => [b.id, b])).values());
+          
+          // 保存账本到本地
+          for (const book of uniqueBooks) {
+            await db.books.put({
+              id: book.id,
+              name: book.name,
+              type: book.type,
+              currency: 'CNY',
+              createdAt: book.created_at,
+              createdBy: book.created_by,
+              members: [],
+              synced: true,
+              lastModified: Date.now(),
+            });
+          }
+          
+          console.log(`📚 已加载 ${uniqueBooks.length} 个账本到本地`);
+
+          // 2. 为每个账本加载分类
+          const allCategories: Category[] = [];
+          for (const book of uniqueBooks) {
+            const { data: cats } = await supabase
+              .from('categories')
+              .select('*')
+              .eq('book_id', book.id)
+              .order('sort_order');
+            
+            if (cats) {
+              const categories: Category[] = cats.map((c: any) => ({
+                id: c.id,
+                bookId: c.book_id,
+                name: c.name,
+                type: c.type as 'INCOME' | 'EXPENSE',
+                icon: c.icon,
+                color: c.color,
+                sortOrder: c.sort_order,
+                isBuiltin: c.is_builtin,
+              }));
+              
+              // 保存到本地数据库
+              for (const cat of categories) {
+                await db.categories.put({
+                  ...cat,
+                  synced: true,
+                  lastModified: Date.now(),
+                });
+              }
+              
+              allCategories.push(...categories);
+            }
+          }
+          
+          console.log(`🏷️ 已加载 ${allCategories.length} 个分类到本地数据库`);
+          
+          set({ isDataPreloaded: true });
+          console.log('✅ 用户数据预加载完成');
+        } catch (error) {
+          console.error('❌ 预加载用户数据失败:', error);
+        }
+      },
     }),
     {
       name: 'auth-store',
+      partialize: (state) => ({
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
+        // isDataPreloaded 不持久化，每次登录重新预加载
+      }),
       storage: {
         getItem: async (name) => {
           const value = await storage.get<string>(name);

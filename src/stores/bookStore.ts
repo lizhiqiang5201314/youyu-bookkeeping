@@ -557,6 +557,30 @@ export const useBookStore = create<BookState>()(
       fetchCategories: async (bookId) => {
         if (!bookId) return;
         try {
+          // 先尝试从本地数据库加载（更快，离线也可用）
+          const localCats = await db.categories.where('bookId').equals(bookId).toArray();
+          
+          if (localCats.length > 0) {
+            const categories: Category[] = localCats.map(c => ({
+              id: c.id,
+              bookId: c.bookId,
+              name: c.name,
+              type: c.type as 'INCOME' | 'EXPENSE',
+              icon: c.icon,
+              color: c.color,
+              sortOrder: c.sortOrder,
+              isBuiltin: c.isBuiltin,
+            }));
+            
+            set(state => ({
+              categoriesMap: { ...state.categoriesMap, [bookId]: categories },
+              categories: state.currentBook?.id === bookId ? categories : state.categories,
+            }));
+            
+            console.log(`📦 从本地加载 ${categories.length} 个分类`);
+          }
+          
+          // 同时从云端同步（后台更新）
           const { data } = await supabase
             .from('categories')
             .select('*')
@@ -585,6 +609,8 @@ export const useBookStore = create<BookState>()(
               // 同时更新当前categories（如果是当前账本）
               categories: state.currentBook?.id === bookId ? categories : state.categories,
             }));
+            
+            console.log(`☁️ 从云端同步 ${categories.length} 个分类`);
           }
         } catch (error) {
           console.error('Fetch categories error:', error);
