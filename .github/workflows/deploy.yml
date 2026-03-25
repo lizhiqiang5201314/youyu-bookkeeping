@@ -25,12 +25,24 @@ jobs:
         rm -rf node_modules package-lock.json
         npm install --registry=https://registry.npmmirror.com
         
-    - name: Build project
-      run: npm run build
-      
     - name: Check secrets
       run: |
         echo "🔍 检查 Secrets 配置..."
+        if [ -z "${{ secrets.VITE_SUPABASE_URL }}" ]; then
+          echo "❌ VITE_SUPABASE_URL 未配置"
+          exit 1
+        else
+          echo "✅ VITE_SUPABASE_URL 已配置"
+        fi
+
+        if [ -z "${{ secrets.VITE_SUPABASE_ANON_KEY }}" ]; then
+          echo "❌ VITE_SUPABASE_ANON_KEY 未配置"
+          exit 1
+        else
+          echo "✅ VITE_SUPABASE_ANON_KEY 已配置"
+          echo "🔑 Supabase Key 长度: $(echo '${{ secrets.VITE_SUPABASE_ANON_KEY }}' | wc -c)"
+        fi
+
         if [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ]; then
           echo "❌ SSH_PRIVATE_KEY 未配置"
           exit 1
@@ -58,6 +70,24 @@ jobs:
         else
           echo "ℹ️ REMOTE_PORT 未配置，将默认使用 22"
         fi
+
+    - name: Prepare production env
+      env:
+        VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+        VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      run: |
+        set -eu
+        cat > .env.production <<EOF
+        VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+        EOF
+        echo "✅ .env.production 已生成"
+
+    - name: Build project
+      env:
+        VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+        VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      run: npm run build
 
     - name: Deploy to server
       env:

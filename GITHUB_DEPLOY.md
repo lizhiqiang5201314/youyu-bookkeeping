@@ -29,19 +29,27 @@ git push -u origin main
 
 登录 GitHub → 打开你的仓库 → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
 
-添加以下 3 个 Secrets：
+添加以下 Secrets：
 
 | Secret Name | Value | 说明 |
 |-------------|-------|------|
 | `REMOTE_HOST` | `139.196.73.61` | 你的服务器IP |
 | `REMOTE_USER` | `root` | 服务器用户名 |
-| `REMOTE_PASSWORD` | `Li468186089` | 服务器密码 |
+| `SSH_PRIVATE_KEY` | GitHub Actions 部署私钥 | 用于免密 SSH 登录 |
+| `REMOTE_PORT` | `22` | SSH 端口，可选 |
+| `VITE_SUPABASE_URL` | 你的 Supabase 项目 URL | 前端构建时注入 |
+| `VITE_SUPABASE_ANON_KEY` | 你的 Supabase Publishable/Anon Key | 前端构建时注入 |
 
 **添加方法：**
 1. 点击 **New repository secret**
 2. Name 填 `REMOTE_HOST`，Value 填 `139.196.73.61`
 3. 点击 **Add secret**
-4. 重复添加其他两个
+4. 重复添加其余需要的 Secrets
+
+**注意：**
+- GitHub Actions 在云端构建，不会读取你本地电脑上的 `.env`
+- 如果缺少 `VITE_SUPABASE_URL` 或 `VITE_SUPABASE_ANON_KEY`，构建虽然可能成功，但页面打开会直接报 Supabase 配置缺失
+- 这两个值可以从项目根目录的 `.env` 中复制
 
 ---
 
@@ -84,7 +92,7 @@ GitHub 仓库 → **Actions** → **Build and Deploy** → **Run workflow**
 ## 🔧 常见问题
 
 ### Q: 部署失败，提示权限错误
-**解决：** 检查 Secrets 里的密码是否正确
+**解决：** 检查 `SSH_PRIVATE_KEY`、`REMOTE_USER` 和服务器 `authorized_keys` 是否匹配
 
 ### Q: 文件没更新
 **解决：** 检查服务器的 `/var/www/youyu/` 目录权限

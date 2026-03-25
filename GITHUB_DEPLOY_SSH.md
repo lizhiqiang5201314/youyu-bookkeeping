@@ -48,11 +48,19 @@ cat ~/.ssh/github_deploy
 |-------------|-------|------|
 | `REMOTE_HOST` | `139.196.73.61` | 服务器IP |
 | `REMOTE_USER` | `root` | 服务器用户名 |
+| `REMOTE_PORT` | `22` | 服务器 SSH 端口，可选 |
 | `SSH_PRIVATE_KEY` | `-----BEGIN OPENSSH PRIVATE KEY-----`... | 刚才复制的私钥全部内容 |
+| `VITE_SUPABASE_URL` | 你的 Supabase 项目 URL | 前端构建时注入 |
+| `VITE_SUPABASE_ANON_KEY` | 你的 Supabase Publishable/Anon Key | 前端构建时注入 |
 
 **添加 SSH_PRIVATE_KEY 时注意：**
 - 要包含 `-----BEGIN` 和 `-----END` 那一行
 - 保持格式完整（有换行）
+
+**Supabase 相关注意：**
+- GitHub Actions 在云端构建，不会读取你电脑里的 `.env`
+- `VITE_SUPABASE_URL` 和 `VITE_SUPABASE_ANON_KEY` 必须在仓库 Secrets 里配置
+- 这两个值可以直接从你本地项目的 `.env` 里复制
 
 ---
 
