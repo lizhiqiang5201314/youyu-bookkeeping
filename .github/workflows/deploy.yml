@@ -26,6 +26,31 @@ jobs:
     - name: Build project
       run: npm run build
       
+    - name: Check secrets
+      run: |
+        echo "🔍 检查 Secrets 配置..."
+        if [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ]; then
+          echo "❌ SSH_PRIVATE_KEY 未配置"
+          exit 1
+        else
+          echo "✅ SSH_PRIVATE_KEY 已配置"
+          echo "🔑 Key 长度: $(echo '${{ secrets.SSH_PRIVATE_KEY }}' | wc -c)"
+        fi
+        
+        if [ -z "${{ secrets.REMOTE_HOST }}" ]; then
+          echo "❌ REMOTE_HOST 未配置"
+          exit 1
+        else
+          echo "✅ REMOTE_HOST 已配置"
+        fi
+        
+        if [ -z "${{ secrets.REMOTE_USER }}" ]; then
+          echo "❌ REMOTE_USER 未配置"
+          exit 1
+        else
+          echo "✅ REMOTE_USER 已配置"
+        fi
+
     - name: Deploy to server
       env:
         SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -34,11 +59,13 @@ jobs:
       run: |
         # 设置 SSH
         mkdir -p ~/.ssh
-        echo "$SSH_KEY" > ~/.ssh/deploy_key
+        # 使用 printf 保留换行符
+        printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
         chmod 600 ~/.ssh/deploy_key
         
-        # 调试：检查密钥是否正确写入（只显示长度）
-        echo "🔑 SSH Key 长度: $(wc -c < ~/.ssh/deploy_key)"
+        # 调试：检查密钥是否正确写入
+        echo "🔑 SSH Key 文件大小: $(wc -c < ~/.ssh/deploy_key)"
+        echo "🔑 SSH Key 行数: $(wc -l < ~/.ssh/deploy_key)"
         echo "🖥️  目标服务器: $USER@$HOST"
         
         # 测试 SSH 连接
