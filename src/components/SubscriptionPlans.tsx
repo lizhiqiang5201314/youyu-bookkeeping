@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useSubscriptionStore } from '@/stores/subscriptionStore';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,14 @@ const WECHAT_PAY_CONFIG = {
   // 支付回调地址（必须是备案域名）
   notifyUrl: 'https://your-domain.com/api/pay/callback',
 };
+
+const isWechatPayConfigured = Boolean(
+  WECHAT_PAY_CONFIG.mchId &&
+  WECHAT_PAY_CONFIG.appId &&
+  WECHAT_PAY_CONFIG.apiKey &&
+  WECHAT_PAY_CONFIG.notifyUrl &&
+  !WECHAT_PAY_CONFIG.notifyUrl.includes('your-domain.com')
+);
 
 export function SubscriptionPlans({ onClose }: SubscriptionPlansProps) {
   const { user } = useAuthStore();
@@ -142,30 +150,38 @@ export function SubscriptionPlans({ onClose }: SubscriptionPlansProps) {
       return;
     }
 
-    setIsProcessing(true);
-
-    // 1. 创建订单
-    const payData = await createPayOrder();
-    if (!payData) {
-      setIsProcessing(false);
+    if (!isWechatPayConfigured) {
+      toast.error('支付功能尚未配置完成，请先完善微信支付参数和后端接口');
       return;
     }
 
-    // 2. 调起微信支付H5
-    await callWechatPay(payData);
+    setIsProcessing(true);
+
+    try {
+      // 1. 创建订单
+      const payData = await createPayOrder();
+      if (!payData) {
+        return;
+      }
+
+      // 2. 调起微信支付H5
+      await callWechatPay(payData);
+    } finally {
+      setIsProcessing(false);
+    }
     
     // 注意：H5支付会跳转页面，以下代码可能不会执行
     // 支付结果通过回调或返回页面处理
   };
 
   // 如果在支付返回页面，检查订单状态
-  useState(() => {
+  useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const orderIdFromUrl = urlParams.get('orderId');
     if (orderIdFromUrl) {
       checkOrderStatus(orderIdFromUrl);
     }
-  });
+  }, []);
 
   const features = [
     { icon: selectedType === 'COUPLE' ? Heart : Users, text: `支持${planConfig.maxMembers}人共享记账` },
@@ -273,7 +289,7 @@ export function SubscriptionPlans({ onClose }: SubscriptionPlansProps) {
       </Button>
 
       {/* 配置提示 */}
-      {!WECHAT_PAY_CONFIG.mchId && (
+      {!isWechatPayConfigured && (
         <div className="p-3 bg-yellow-50 rounded-lg text-xs text-yellow-700">
           <p className="font-medium mb-1">⚠️ 支付配置待完善</p>
           <p>请在 SubscriptionPlans.tsx 中填入微信支付商户信息：</p>

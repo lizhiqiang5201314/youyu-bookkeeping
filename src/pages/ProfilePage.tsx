@@ -577,9 +577,13 @@ export function ProfilePage() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => {
-                              navigator.clipboard.writeText(generatedCode);
-
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(generatedCode);
+                                toast.success('邀请码已复制');
+                              } catch (error) {
+                                toast.error('复制失败，请手动复制');
+                              }
                             }}
                           >
                             复制

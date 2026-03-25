@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useSubscriptionStore } from '@/stores/subscriptionStore';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -252,7 +252,16 @@ export function LoginPage() {
   const [agreed, setAgreed] = useState(false);
   const [showAgreement, setShowAgreement] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { setUser } = useAuthStore();
+
+  useEffect(() => {
+    return () => {
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+      }
+    };
+  }, []);
 
   // 验证手机号
   const isValidPhone = (phone: string): boolean => {
@@ -298,11 +307,18 @@ export function LoginPage() {
         toast.success('验证码已发送');
       }
 
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+      }
+
       setCountdown(60);
-      const timer = setInterval(() => {
+      countdownTimerRef.current = setInterval(() => {
         setCountdown((prev) => {
           if (prev <= 1) {
-            clearInterval(timer);
+            if (countdownTimerRef.current) {
+              clearInterval(countdownTimerRef.current);
+              countdownTimerRef.current = null;
+            }
             return 0;
           }
           return prev - 1;
