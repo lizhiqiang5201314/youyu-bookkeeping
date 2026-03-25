@@ -8,113 +8,7 @@ import { toast } from 'sonner';
 import type { Transaction, TransactionType } from '@/types';
 import { formatDate as formatLocalDate, parseDate } from '@/services/db';
 import { Calendar, Loader2, ChevronLeft } from 'lucide-react';
-
-// 日期格式化工具
-const formatDateDisplay = (dateStr: string) => {
-  const date = parseDate(dateStr);
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  
-  const isToday = date.toDateString() === today.toDateString();
-  const isYesterday = date.toDateString() === yesterday.toDateString();
-  
-  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-  const weekday = weekdays[date.getDay()];
-  
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  
-  if (isToday) return { label: '今天', weekday, full: `${month}月${day}日` };
-  if (isYesterday) return { label: '昨天', weekday, full: `${month}月${day}日` };
-  return { label: `${month}月${day}日`, weekday, full: `${month}月${day}日` };
-};
-
-// 滚轮式日期选择器
-function DatePicker({ value, onChange, onCancel }: { value: string; onChange: (date: string) => void; onCancel: () => void }) {
-  const date = parseDate(value);
-  const [selectedYear, setSelectedYear] = useState(date.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(date.getMonth() + 1);
-  const [selectedDay, setSelectedDay] = useState(date.getDate());
-  
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 21 }, (_, i) => currentYear - 10 + i);
-  const months = Array.from({ length: 12 }, (_, i) => i + 1);
-  const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
-  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  
-  const handleConfirm = () => {
-    // 手动格式化日期，避免时区问题
-    const year = selectedYear;
-    const month = String(selectedMonth).padStart(2, '0');
-    const day = String(selectedDay).padStart(2, '0');
-    onChange(`${year}-${month}-${day}`);
-  };
-  
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-      <div className="bg-white w-full rounded-t-2xl">
-        <div className="flex items-center justify-between px-4 py-3 border-b">
-          <button onClick={onCancel} className="text-gray-500 text-base">取消</button>
-          <span className="text-base font-medium">选择日期</span>
-          <button onClick={handleConfirm} className="text-teal-500 text-base font-medium">确定</button>
-        </div>
-        
-        <div className="flex h-52 relative">
-          <div className="flex-1 overflow-y-auto" style={{ scrollSnapType: 'y mandatory' }}>
-            {years.map((year) => (
-              <div
-                key={year}
-                onClick={() => setSelectedYear(year)}
-                className={cn(
-                  'h-11 flex items-center justify-center text-base transition-colors',
-                  selectedYear === year ? 'text-gray-900 font-medium' : 'text-gray-400'
-                )}
-                style={{ scrollSnapAlign: 'center' }}
-              >
-                {year}年
-              </div>
-            ))}
-          </div>
-          
-          <div className="flex-1 overflow-y-auto" style={{ scrollSnapType: 'y mandatory' }}>
-            {months.map((month) => (
-              <div
-                key={month}
-                onClick={() => setSelectedMonth(month)}
-                className={cn(
-                  'h-11 flex items-center justify-center text-base transition-colors',
-                  selectedMonth === month ? 'text-gray-900 font-medium' : 'text-gray-400'
-                )}
-                style={{ scrollSnapAlign: 'center' }}
-              >
-                {String(month).padStart(2, '0')}月
-              </div>
-            ))}
-          </div>
-          
-          <div className="flex-1 overflow-y-auto" style={{ scrollSnapType: 'y mandatory' }}>
-            {days.map((day) => (
-              <div
-                key={day}
-                onClick={() => setSelectedDay(day)}
-                className={cn(
-                  'h-11 flex items-center justify-center text-base transition-colors',
-                  selectedDay === day ? 'text-gray-900 font-medium' : 'text-gray-400'
-                )}
-                style={{ scrollSnapAlign: 'center' }}
-              >
-                {String(day).padStart(2, '0')}日
-              </div>
-            ))}
-          </div>
-          
-          <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-11 bg-gray-100/50 pointer-events-none" />
-        </div>
-      </div>
-    </div>
-  );
-}
+import { TransactionDatePicker, formatDateDisplay } from '@/components/TransactionDatePicker';
 
 // 日期选择器组件
 function DateSelector({ value, onChange }: { value: string; onChange: (date: string) => void }) {
@@ -138,7 +32,7 @@ function DateSelector({ value, onChange }: { value: string; onChange: (date: str
       </button>
       
       {showPicker && (
-        <DatePicker 
+        <TransactionDatePicker 
           value={value} 
           onChange={(date) => {
             onChange(date);

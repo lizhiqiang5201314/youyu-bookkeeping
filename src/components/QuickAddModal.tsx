@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useBookStore } from '@/stores/bookStore';
 import { useTransactionStore } from '@/stores/transactionStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -8,157 +8,9 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { TransactionType } from '@/types';
-import { formatDate as formatLocalDate, parseDate } from '@/services/db';
+import { formatDate as formatLocalDate } from '@/services/db';
 import { Calendar, X, StickyNote, Loader2 } from 'lucide-react';
-
-// 日期格式化工具
-const formatDateDisplay = (dateStr: string) => {
-  const date = parseDate(dateStr);
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  
-  const isToday = date.toDateString() === today.toDateString();
-  const isYesterday = date.toDateString() === yesterday.toDateString();
-  
-  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-  const weekday = weekdays[date.getDay()];
-  
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  
-  if (isToday) return { label: '今天', weekday, full: `${month}月${day}日` };
-  if (isYesterday) return { label: '昨天', weekday, full: `${month}月${day}日` };
-  return { label: `${month}月${day}日`, weekday, full: `${month}月${day}日` };
-};
-
-// 滚轮式日期选择器
-function DatePicker({ value, onChange, onCancel }: { value: string; onChange: (date: string) => void; onCancel: () => void }) {
-  const date = parseDate(value);
-  const [selectedYear, setSelectedYear] = useState(date.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(date.getMonth() + 1);
-  const [selectedDay, setSelectedDay] = useState(date.getDate());
-  
-  // 生成年份列表（前后10年）
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 21 }, (_, i) => currentYear - 10 + i);
-  
-  // 生成月份列表
-  const months = Array.from({ length: 12 }, (_, i) => i + 1);
-  
-  // 生成日期列表（根据年月动态）
-  const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
-  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  
-  // 用于滚动的 ref
-  const yearContainerRef = useRef<HTMLDivElement>(null);
-  const monthContainerRef = useRef<HTMLDivElement>(null);
-  const dayContainerRef = useRef<HTMLDivElement>(null);
-  
-  // 组件挂载后自动滚动到选中项
-  useEffect(() => {
-    const itemHeight = 44; // h-11 = 44px
-    const containerHeight = 208; // h-52 = 208px
-    const offset = (containerHeight - itemHeight) / 2;
-    
-    // 滚动年份到选中项
-    const yearIndex = years.indexOf(selectedYear);
-    if (yearContainerRef.current && yearIndex !== -1) {
-      yearContainerRef.current.scrollTop = yearIndex * itemHeight - offset;
-    }
-    
-    // 滚动月份到选中项
-    const monthIndex = months.indexOf(selectedMonth);
-    if (monthContainerRef.current && monthIndex !== -1) {
-      monthContainerRef.current.scrollTop = monthIndex * itemHeight - offset;
-    }
-    
-    // 滚动日期到选中项
-    const dayIndex = days.indexOf(selectedDay);
-    if (dayContainerRef.current && dayIndex !== -1) {
-      dayContainerRef.current.scrollTop = dayIndex * itemHeight - offset;
-    }
-  }, []);
-  
-  // 处理日期变化
-  const handleConfirm = () => {
-    // 手动格式化日期，避免时区问题
-    const year = selectedYear;
-    const month = String(selectedMonth).padStart(2, '0');
-    const day = String(selectedDay).padStart(2, '0');
-    onChange(`${year}-${month}-${day}`);
-  };
-  
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-      <div className="bg-white w-full rounded-t-2xl">
-        {/* 顶部按钮 */}
-        <div className="flex items-center justify-between px-4 py-3 border-b">
-          <button onClick={onCancel} className="text-gray-500 text-base">取消</button>
-          <span className="text-base font-medium">选择日期</span>
-          <button onClick={handleConfirm} className="text-teal-500 text-base font-medium">确定</button>
-        </div>
-        
-        {/* 三列滚轮 */}
-        <div className="flex h-52 relative">
-          {/* 年 */}
-          <div ref={yearContainerRef} className="flex-1 overflow-y-auto scrollbar-hide" style={{ scrollSnapType: 'y mandatory' }}>
-            {years.map((year) => (
-              <div
-                key={year}
-                onClick={() => setSelectedYear(year)}
-                className={cn(
-                  'h-11 flex items-center justify-center text-base transition-colors',
-                  selectedYear === year ? 'text-gray-900 font-medium' : 'text-gray-400'
-                )}
-                style={{ scrollSnapAlign: 'center' }}
-              >
-                {year}年
-              </div>
-            ))}
-          </div>
-          
-          {/* 月 */}
-          <div ref={monthContainerRef} className="flex-1 overflow-y-auto scrollbar-hide" style={{ scrollSnapType: 'y mandatory' }}>
-            {months.map((month) => (
-              <div
-                key={month}
-                onClick={() => setSelectedMonth(month)}
-                className={cn(
-                  'h-11 flex items-center justify-center text-base transition-colors',
-                  selectedMonth === month ? 'text-gray-900 font-medium' : 'text-gray-400'
-                )}
-                style={{ scrollSnapAlign: 'center' }}
-              >
-                {String(month).padStart(2, '0')}月
-              </div>
-            ))}
-          </div>
-          
-          {/* 日 */}
-          <div ref={dayContainerRef} className="flex-1 overflow-y-auto scrollbar-hide" style={{ scrollSnapType: 'y mandatory' }}>
-            {days.map((day) => (
-              <div
-                key={day}
-                onClick={() => setSelectedDay(day)}
-                className={cn(
-                  'h-11 flex items-center justify-center text-base transition-colors',
-                  selectedDay === day ? 'text-gray-900 font-medium' : 'text-gray-400'
-                )}
-                style={{ scrollSnapAlign: 'center' }}
-              >
-                {String(day).padStart(2, '0')}日
-              </div>
-            ))}
-          </div>
-          
-          {/* 选中指示器 */}
-          <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-11 bg-gray-100/50 pointer-events-none" />
-        </div>
-      </div>
-    </div>
-  );
-}
+import { TransactionDatePicker, formatDateDisplay } from '@/components/TransactionDatePicker';
 
 // 日期选择器组件
 function DateSelector({ value, onChange }: { value: string; onChange: (date: string) => void }) {
@@ -182,7 +34,7 @@ function DateSelector({ value, onChange }: { value: string; onChange: (date: str
       </button>
       
       {showPicker && (
-        <DatePicker 
+        <TransactionDatePicker 
           value={value} 
           onChange={(date) => {
             onChange(date);
@@ -202,7 +54,7 @@ interface QuickAddModalProps {
 
 export function QuickAddModal({ open, onClose }: QuickAddModalProps) {
   const { user } = useAuthStore();
-  const { currentBook, getCategoriesByType, fetchCategories } = useBookStore();
+  const { currentBook, getCategoriesByType } = useBookStore();
   const { addTransaction } = useTransactionStore();
   
   const [type, setType] = useState<TransactionType>('EXPENSE');
@@ -213,33 +65,27 @@ export function QuickAddModal({ open, onClose }: QuickAddModalProps) {
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  // 直接从 categoriesMap 读取分类，不再强制刷新
   const categories = useMemo(() => {
     if (!currentBook) return [];
     return getCategoriesByType(type);
   }, [currentBook, type, getCategoriesByType]);
   
-  // 强制刷新分类
-  const [categoriesVersion, setCategoriesVersion] = useState(0);
-  
   useEffect(() => {
-    if (open && currentBook) {
+    if (open) {
       setAmount('');
       setNote('');
       setRecordDate(formatLocalDate(new Date()));
       setShowNoteInput(false);
-      // 强制重新加载分类
-      fetchCategories(currentBook.id).then(() => {
-        setCategoriesVersion(v => v + 1);
-      });
     }
-  }, [open, currentBook?.id]);
+  }, [open]);
   
-  // 类型切换时自动选择默认分类
+  // 类型切换或账本切换时自动选择默认分类
   useEffect(() => {
     if (categories.length > 0) {
       setSelectedCategoryId(categories[0].id);
     }
-  }, [type, categoriesVersion, categories]);
+  }, [type, categories]);
 
   const handleNumberPress = (num: string) => {
     if (num === '.' && amount.includes('.')) return;
