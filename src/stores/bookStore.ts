@@ -198,22 +198,29 @@ export const useBookStore = create<BookState>()(
 
           // 去重
           const uniqueBooks = Array.from(new Map(allBooks.map(b => [b.id, b])).values());
+          const bookIds = uniqueBooks.map(b => b.id);
 
-          // 加载成员信息 - 为每个账本单独查询确保准确
+          // 加载成员信息 - 批量查询所有账本的成员
           const membersByBook: Record<string, BookMember[]> = {};
           
-          for (const book of uniqueBooks) {
-            const { data: bookMembers } = await supabase
+          if (bookIds.length > 0) {
+            const { data: allMembers } = await supabase
               .from('book_members')
               .select('*')
-              .eq('book_id', book.id);
+              .in('book_id', bookIds);
             
-            if (bookMembers) {
-              membersByBook[book.id] = bookMembers.map((m: any) => ({
-                userId: m.user_id,
-                role: m.role,
-                joinedAt: m.joined_at,
-              }));
+            if (allMembers) {
+              // 按账本ID分组
+              for (const member of allMembers) {
+                if (!membersByBook[member.book_id]) {
+                  membersByBook[member.book_id] = [];
+                }
+                membersByBook[member.book_id].push({
+                  userId: member.user_id,
+                  role: member.role,
+                  joinedAt: member.joined_at,
+                });
+              }
             }
           }
 
@@ -228,30 +235,80 @@ export const useBookStore = create<BookState>()(
             members: membersByBook[b.id] || [],
           }));
 
-          // 保存到本地 - 先清空该用户的所有账本缓存，再写入新数据
+          // 保存到本地 - 使用 bulkPut 批量写入
           const localBooks = await db.books.toArray();
           const userBookIds = books.map(b => b.id);
           
           // 删除本地不在云端列表中的账本（已被删除或退出的）
-          for (const localBook of localBooks) {
-            if (!userBookIds.includes(localBook.id)) {
-              await db.books.delete(localBook.id);
-            }
+          const booksToDelete = localBooks
+            .filter(localBook => !userBookIds.includes(localBook.id))
+            .map(b => b.id);
+          
+          if (booksToDelete.length > 0) {
+            await db.books.bulkDelete(booksToDelete);
           }
           
-          // 写入最新数据
-          for (const book of books) {
-            await db.books.put({ ...book, synced: true, lastModified: Date.now() });
-          }
+          // 批量写入最新数据
+          const booksToPut = books.map(book => ({ 
+            ...book, 
+            synced: true, 
+            lastModified: Date.now() 
+          }));
+          await db.books.bulkPut(booksToPut);
 
           set({
             books,
             currentBook: getNextCurrentBook(get().currentBook, books),
           });
 
-          // 为所有账本加载分类
-          for (const book of books) {
-            await get().fetchCategories(book.id);
+          // 为所有账本批量加载分类
+          if (bookIds.length > 0) {
+            const { data: allCategories } = await supabase
+              .from('categories')
+              .select('*')
+              .in('book_id', bookIds)
+              .order('sort_order');
+            
+            if (allCategories) {
+              // 按账本ID分组
+              const categoriesByBook: Record<string, Category[]> = {};
+              for (const cat of allCategories) {
+                if (!categoriesByBook[cat.book_id]) {
+                  categoriesByBook[cat.book_id] = [];
+                }
+                categoriesByBook[cat.book_id].push({
+                  id: cat.id,
+                  bookId: cat.book_id,
+                  name: cat.name,
+                  type: cat.type as 'INCOME' | 'EXPENSE',
+                  icon: cat.icon,
+                  color: cat.color,
+                  sortOrder: cat.sort_order,
+                  isBuiltin: cat.is_builtin,
+                });
+              }
+              
+              // 批量保存到本地数据库
+              const categoriesToPut: Category[] = [];
+              for (const bookId of bookIds) {
+                const cats = categoriesByBook[bookId] || [];
+                for (const cat of cats) {
+                  categoriesToPut.push({
+                    ...cat,
+                    synced: true,
+                    lastModified: Date.now(),
+                  } as Category);
+                }
+              }
+              await db.categories.bulkPut(categoriesToPut);
+              
+              // 更新 store 中的分类数据
+              const categoriesMap: Record<string, Category[]> = {};
+              for (const bookId of bookIds) {
+                categoriesMap[bookId] = categoriesByBook[bookId] || [];
+              }
+              set({ categoriesMap });
+            }
           }
         } catch (error) {
           console.error('Fetch books error:', error);
