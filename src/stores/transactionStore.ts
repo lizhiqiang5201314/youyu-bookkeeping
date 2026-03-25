@@ -22,7 +22,7 @@ const latestFetchRequestByBook: Record<string, number> = {};
 interface TransactionState {
   transactionsMap: Record<string, Transaction[]>; // key: bookId
   isLoading: boolean;
-  isSyncing: boolean;
+  isSyncingByBook: Record<string, boolean>; // 🎯 按账本分开的同步锁
   selectedDateRange: DateRange;
 
   // Actions
@@ -47,7 +47,7 @@ export const useTransactionStore = create<TransactionState>()(
     (set, get) => ({
       transactionsMap: {},
       isLoading: false,
-      isSyncing: false,
+      isSyncingByBook: {}, // 🎯 按账本分开的同步锁
       selectedDateRange: getDateRange('month'),
 
       // 🧹 初始化时清空所有数据
@@ -95,8 +95,14 @@ export const useTransactionStore = create<TransactionState>()(
       },
 
       syncWithCloud: async (bookId) => {
-        if (!bookId || get().isSyncing) return;
-        set({ isSyncing: true });
+        if (!bookId) return;
+        
+        // 🎯 检查该账本是否正在同步
+        if (get().isSyncingByBook[bookId]) return;
+        
+        set(state => ({
+          isSyncingByBook: { ...state.isSyncingByBook, [bookId]: true }
+        }));
 
         try {
           const { data, error } = await supabase
@@ -137,7 +143,9 @@ export const useTransactionStore = create<TransactionState>()(
         } catch (error) {
           console.error('Sync error:', error);
         } finally {
-          set({ isSyncing: false });
+          set(state => ({
+            isSyncingByBook: { ...state.isSyncingByBook, [bookId]: false }
+          }));
         }
       },
 
