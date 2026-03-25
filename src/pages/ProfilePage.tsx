@@ -32,6 +32,7 @@ import { toast } from 'sonner';
 import { SubscriptionPlans } from '@/components/SubscriptionPlans';
 import type { BookType } from '@/types';
 import { formatDate as formatLocalDate } from '@/services/db';
+import { supabase } from '@/services/supabase';
 
 export function ProfilePage() {
   const { user, logout, updateUser } = useAuthStore();
@@ -109,15 +110,13 @@ export function ProfilePage() {
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !user) return;
 
-    // 检查文件类型
     if (!file.type.startsWith('image/')) {
       toast.error('请选择图片文件');
       return;
     }
 
-    // 检查文件大小 (最大 2MB)
     if (file.size > 2 * 1024 * 1024) {
       toast.error('图片大小不能超过 2MB');
       return;
@@ -126,20 +125,25 @@ export function ProfilePage() {
     setIsAvatarLoading(true);
 
     try {
-      // 读取文件为 base64
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const base64 = event.target?.result as string;
+      const fileExt = file.name.split('.').pop() || 'jpg';
+      const filePath = `avatars/${user.id}-${Date.now()}.${fileExt}`;
 
-        // 更新用户头像（存储 base64）
-        await updateUser({ avatar: base64 });
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { upsert: true });
 
-        setIsAvatarLoading(false);
-      };
-      reader.readAsDataURL(file);
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+      await updateUser({ avatar: data.publicUrl });
+      toast.success('头像更新成功');
     } catch (error) {
       toast.error('上传失败');
+    } finally {
       setIsAvatarLoading(false);
+      e.target.value = '';
     }
   };
 

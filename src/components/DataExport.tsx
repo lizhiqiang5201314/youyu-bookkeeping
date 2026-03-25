@@ -100,8 +100,9 @@ export function DataExport() {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success('导出成功');
 
-      
     } catch (error) {
       console.error('Export error:', error);
       toast.error('导出失败');

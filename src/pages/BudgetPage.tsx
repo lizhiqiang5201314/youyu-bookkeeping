@@ -1,64 +1,39 @@
 import { useState, useEffect } from 'react';
 import { useBookStore } from '@/stores/bookStore';
 import { useTransactionStore } from '@/stores/transactionStore';
+import { useBudgetStore } from '@/stores/budgetStore';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { supabase } from '@/services/supabase';
 import { toast } from 'sonner';
 import { Wallet, AlertCircle, Edit2, Plus, Trash2 } from 'lucide-react';
 import { formatAmount, getDateRange } from '@/utils/constants';
 import { cn } from '@/lib/utils';
-import type { Category } from '@/types';
-
-interface Budget {
-  id: string;
-  bookId: string;
-  categoryId?: string;
-  amount: number;
-  period: 'monthly' | 'yearly';
-  alertThreshold: number;
-  createdAt: string;
-}
+import type { Budget, Category } from '@/types';
 
 export function BudgetPage() {
   const { currentBook, categories, fetchCategories } = useBookStore();
   const { getTransactionsByDateRange, fetchTransactions } = useTransactionStore();
-  const [budgets, setBudgets] = useState<Budget[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const { budgets, isLoading, fetchBudgets, saveBudget, deleteBudget, subscribeToBudgetChanges } = useBudgetStore();
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
+  const [pendingDeleteBudget, setPendingDeleteBudget] = useState<Budget | null>(null);
 
-  // 预算表单
   const [budgetAmount, setBudgetAmount] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(undefined);
   const [alertThreshold, setAlertThreshold] = useState('80');
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (currentBook) {
-      fetchBudgets();
+      fetchBudgets(currentBook.id);
       fetchTransactions(currentBook.id);
       fetchCategories(currentBook.id);
+      return subscribeToBudgetChanges(currentBook.id);
     }
-  }, [currentBook, fetchTransactions, fetchCategories]);
-
-  const fetchBudgets = async () => {
-    if (!currentBook) return;
-    
-    const { data, error } = await supabase
-      .from('budgets')
-      .select('*')
-      .eq('book_id', currentBook.id);
-
-    if (error) {
-      console.error('Fetch budgets error:', error);
-      return;
-    }
-
-    setBudgets(data || []);
-  };
+  }, [currentBook?.id, fetchBudgets, fetchTransactions, fetchCategories, subscribeToBudgetChanges]);
 
   const handleSaveBudget = async () => {
     if (!currentBook) {
@@ -70,59 +45,40 @@ export function BudgetPage() {
       return;
     }
 
-    setIsLoading(true);
-    
+    setIsSaving(true);
+
     try {
-      const budgetData = {
-        book_id: currentBook.id,
-        category_id: selectedCategoryId || null,
+      await saveBudget({
+        id: editingBudget?.id,
+        bookId: currentBook.id,
+        categoryId: selectedCategoryId,
         amount: Math.round(parseFloat(budgetAmount) * 100),
-        period: 'monthly',
-        alert_threshold: parseInt(alertThreshold),
-      };
+        alertThreshold: parseInt(alertThreshold),
+      });
 
-      if (editingBudget) {
-        const { error } = await supabase
-          .from('budgets')
-          .update(budgetData)
-          .eq('id', editingBudget.id);
-
-        if (error) throw error;
-        toast.success('预算修改成功');
-      } else {
-        const { error } = await supabase
-          .from('budgets')
-          .insert(budgetData);
-
-        if (error) throw error;
-        toast.success('预算设置成功');
-      }
-
+      toast.success(editingBudget ? '预算修改成功' : '预算设置成功');
       setShowAddModal(false);
       setEditingBudget(null);
       resetForm();
-      fetchBudgets();
     } catch (error) {
       console.error('Save budget error:', error);
       toast.error('保存失败');
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
     }
   };
 
-  const handleDeleteBudget = async (budgetId: string) => {
-    const { error } = await supabase
-      .from('budgets')
-      .delete()
-      .eq('id', budgetId);
+  const handleDeleteBudget = async () => {
+    if (!pendingDeleteBudget || !currentBook) return;
 
-    if (error) {
+    try {
+      await deleteBudget(pendingDeleteBudget.id);
+      await fetchBudgets(currentBook.id);
+      toast.success('删除成功');
+      setPendingDeleteBudget(null);
+    } catch (error) {
       toast.error('删除失败');
-      return;
     }
-
-    toast.success('删除成功');
-    fetchBudgets();
   };
 
   const resetForm = () => {
@@ -135,7 +91,7 @@ export function BudgetPage() {
     setEditingBudget(budget);
     setBudgetAmount((budget.amount / 100).toString());
     setSelectedCategoryId(budget.categoryId);
-    setAlertThreshold(budget.alertThreshold.toString());
+    setAlertThreshold((budget.alertThreshold || 80).toString());
     setShowAddModal(true);
   };
 
@@ -145,19 +101,18 @@ export function BudgetPage() {
     setShowAddModal(true);
   };
 
-  // 计算预算使用情况
   const getBudgetUsage = (budget: Budget) => {
     if (!currentBook) return { spent: 0, percentage: 0 };
-    
+
     const dateRange = getDateRange('month');
     const transactions = getTransactionsByDateRange(currentBook.id, dateRange, 'EXPENSE');
-    
+
     const spent = transactions
       .filter(t => !budget.categoryId || t.categoryId === budget.categoryId)
       .reduce((sum, t) => sum + t.amount, 0);
-    
+
     const percentage = Math.min(Math.round((spent / budget.amount) * 100), 100);
-    
+
     return { spent, percentage };
   };
 
@@ -196,8 +151,9 @@ export function BudgetPage() {
             const { spent, percentage } = getBudgetUsage(budget);
             const category = expenseCategories.find((c: Category) => c.id === budget.categoryId);
             const isOverBudget = spent > budget.amount;
-            const isNearLimit = percentage >= budget.alertThreshold;
-            
+            const threshold = budget.alertThreshold || 80;
+            const isNearLimit = percentage >= threshold;
+
             return (
               <Card key={budget.id} className={cn(
                 'border-0 shadow-sm',
@@ -227,27 +183,27 @@ export function BudgetPage() {
                         <Edit2 className="w-4 h-4 text-gray-400" />
                       </button>
                       <button
-                        onClick={() => handleDeleteBudget(budget.id)}
+                        onClick={() => setPendingDeleteBudget(budget)}
                         className="p-2 hover:bg-red-50 rounded-full"
                       >
                         <Trash2 className="w-4 h-4 text-red-400" />
                       </button>
                     </div>
                   </div>
-                  
-                  <Progress 
-                    value={percentage} 
+
+                  <Progress
+                    value={percentage}
                     className={cn(
                       'h-2',
                       isOverBudget && 'bg-red-100',
                       isNearLimit && !isOverBudget && 'bg-yellow-100'
                     )}
                   />
-                  
+
                   <div className="flex items-center justify-between mt-2">
                     <span className={cn(
                       'text-sm font-medium',
-                      isOverBudget ? 'text-red-600' : 
+                      isOverBudget ? 'text-red-600' :
                       isNearLimit ? 'text-yellow-600' : 'text-gray-500'
                     )}>
                       {percentage}%
@@ -266,13 +222,12 @@ export function BudgetPage() {
         )}
       </div>
 
-      {/* 添加/编辑预算弹窗 */}
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editingBudget ? '编辑预算' : '设置预算'}</DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-4 mt-4">
             <div>
               <label className="text-sm font-medium text-gray-700">预算分类</label>
@@ -289,7 +244,7 @@ export function BudgetPage() {
                 ))}
               </select>
             </div>
-            
+
             <div>
               <label className="text-sm font-medium text-gray-700">预算金额（元）</label>
               <Input
@@ -300,7 +255,7 @@ export function BudgetPage() {
                 className="mt-1"
               />
             </div>
-            
+
             <div>
               <label className="text-sm font-medium text-gray-700">提醒阈值（%）</label>
               <div className="flex items-center gap-4 mt-1">
@@ -318,7 +273,7 @@ export function BudgetPage() {
                 当支出达到预算的 {alertThreshold}% 时提醒
               </p>
             </div>
-            
+
             <div className="flex gap-3 pt-4">
               <Button
                 variant="outline"
@@ -330,9 +285,30 @@ export function BudgetPage() {
               <Button
                 className="flex-1 bg-teal-500 hover:bg-teal-600"
                 onClick={handleSaveBudget}
-                disabled={isLoading}
+                disabled={isSaving || isLoading}
               >
-                {isLoading ? '保存中...' : '保存'}
+                {isSaving ? '保存中...' : '保存'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!pendingDeleteBudget} onOpenChange={(open) => !open && setPendingDeleteBudget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>确认删除预算</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-gray-500">
+              确定要删除「{expenseCategories.find(c => c.id === pendingDeleteBudget?.categoryId)?.name || '总预算'}」吗？
+            </p>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setPendingDeleteBudget(null)}>
+                取消
+              </Button>
+              <Button className="flex-1 bg-red-500 hover:bg-red-600" onClick={handleDeleteBudget}>
+                删除
               </Button>
             </div>
           </div>

@@ -188,6 +188,8 @@ export interface Budget {
   year: number;
   month: number;
   amount: number;
+  period?: 'monthly' | 'yearly';
+  alertThreshold?: number;
   createdAt: string;
   updatedAt?: string;
 }
