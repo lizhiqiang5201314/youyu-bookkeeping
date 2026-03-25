@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import { HomePage } from './HomePage';
-import { StatisticsPage } from './StatisticsPage';
-import { AssetsPage } from './AssetsPage';
-import { ProfilePage } from './ProfilePage';
-import { BudgetPage } from './BudgetPage';
-import { QuickAddModal } from '@/components/QuickAddModal';
+import { Suspense, lazy, useState } from 'react';
+const HomePage = lazy(() => import('./HomePage').then(module => ({ default: module.HomePage })));
+const StatisticsPage = lazy(() => import('./StatisticsPage').then(module => ({ default: module.StatisticsPage })));
+const AssetsPage = lazy(() => import('./AssetsPage').then(module => ({ default: module.AssetsPage })));
+const ProfilePage = lazy(() => import('./ProfilePage').then(module => ({ default: module.ProfilePage })));
+const BudgetPage = lazy(() => import('./BudgetPage').then(module => ({ default: module.BudgetPage })));
+const QuickAddModal = lazy(() => import('@/components/QuickAddModal').then(module => ({ default: module.QuickAddModal })));
 import { Button } from '@/components/ui/button';
 import { useBookStore } from '@/stores/bookStore';
 import { 
@@ -56,7 +56,9 @@ export function MainApp() {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* 主内容区 */}
       <main className="flex-1 overflow-auto pb-20">
-        {renderPage()}
+        <Suspense fallback={<div className="min-h-[50vh] flex items-center justify-center text-gray-400">加载中...</div>}>
+          {renderPage()}
+        </Suspense>
       </main>
 
       {/* 底部导航 */}
@@ -99,11 +101,13 @@ export function MainApp() {
       </nav>
 
       {/* 快捷记账弹窗 */}
-      <QuickAddModal
-        key={`${currentBook?.id || 'no-book'}-${quickAddKey}`}
-        open={isQuickAddOpen}
-        onClose={() => setIsQuickAddOpen(false)}
-      />
+      <Suspense fallback={null}>
+        <QuickAddModal
+          key={`${currentBook?.id || 'no-book'}-${quickAddKey}`}
+          open={isQuickAddOpen}
+          onClose={() => setIsQuickAddOpen(false)}
+        />
+      </Suspense>
     </div>
   );
 }

@@ -55,6 +55,12 @@ export function ProfilePage() {
   const [selectedBookForInvite, setSelectedBookForInvite] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+  const [pendingAction, setPendingAction] = useState<
+    | { type: 'logout' }
+    | { type: 'delete-book'; bookId: string; bookName: string }
+    | { type: 'exit-book'; bookId: string; bookName: string }
+    | null
+  >(null);
 
   const [isCheckingIn, setIsCheckingIn] = useState(false);
 
@@ -138,10 +144,7 @@ export function ProfilePage() {
   };
 
   const handleLogout = () => {
-    if (confirm('确定要退出登录吗？')) {
-      logout();
-
-    }
+    setPendingAction({ type: 'logout' });
   };
 
   // 处理创建新账本
@@ -217,30 +220,44 @@ export function ProfilePage() {
   // 删除账本（仅创建者可删除）
   const handleDeleteBook = async (bookId: string, bookName: string) => {
     if (!user) return;
-    if (!confirm(`确定要删除「${bookName}」吗？删除后无法恢复！`)) return;
-
-    try {
-      await deleteBook(bookId, user.id);
-
-    } catch (error) {
-      toast.error('删除失败');
-    }
+    setPendingAction({ type: 'delete-book', bookId, bookName });
   };
 
   // 退出账本（成员可退出情侣/家庭账本）
   const handleExitBook = async (bookId: string, bookName: string) => {
     if (!user) return;
-    if (!confirm(`确定要退出「${bookName}」吗？`)) return;
+    setPendingAction({ type: 'exit-book', bookId, bookName });
+  };
+
+  const handleConfirmAction = async () => {
+    if (!user || !pendingAction) return;
 
     try {
-      const success = await exitBook(bookId, user.id);
-      if (success) {
-
-      } else {
-        toast.error('退出失败，创建者只能删除不能退出');
+      if (pendingAction.type === 'logout') {
+        logout();
       }
+
+      if (pendingAction.type === 'delete-book') {
+        await deleteBook(pendingAction.bookId, user.id);
+      }
+
+      if (pendingAction.type === 'exit-book') {
+        const success = await exitBook(pendingAction.bookId, user.id);
+        if (!success) {
+          toast.error('退出失败，创建者只能删除不能退出');
+          return;
+        }
+      }
+
+      setPendingAction(null);
     } catch (error) {
-      toast.error('退出失败');
+      toast.error(
+        pendingAction.type === 'delete-book'
+          ? '删除失败'
+          : pendingAction.type === 'exit-book'
+          ? '退出失败'
+          : '操作失败'
+      );
     }
   };
 
@@ -855,6 +872,37 @@ export function ProfilePage() {
                 </>
               )}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 操作确认弹窗 */}
+      <Dialog open={!!pendingAction} onOpenChange={(open) => !open && setPendingAction(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {pendingAction?.type === 'logout' && '确认退出登录'}
+              {pendingAction?.type === 'delete-book' && '确认删除账本'}
+              {pendingAction?.type === 'exit-book' && '确认退出账本'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-gray-500">
+              {pendingAction?.type === 'logout' && '退出后需要重新登录才能继续使用。'}
+              {pendingAction?.type === 'delete-book' && `确定要删除「${pendingAction.bookName}」吗？删除后无法恢复。`}
+              {pendingAction?.type === 'exit-book' && `确定要退出「${pendingAction.bookName}」吗？`}
+            </p>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setPendingAction(null)}>
+                取消
+              </Button>
+              <Button
+                className="flex-1 bg-red-500 hover:bg-red-600"
+                onClick={handleConfirmAction}
+              >
+                确认
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
