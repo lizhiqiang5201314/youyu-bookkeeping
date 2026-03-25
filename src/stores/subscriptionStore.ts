@@ -96,7 +96,9 @@ export const useSubscriptionStore = create<SubscriptionState>()(
             status: subscription.status,
             auto_renew: subscription.autoRenew,
           });
-          console.log('Subscription synced to cloud:', subscription.id);
+          if (import.meta.env.DEV) {
+            console.log('Subscription synced to cloud:', subscription.id);
+          }
         } catch (error) {
           console.error('Sync subscription to cloud error:', error);
         }
@@ -140,7 +142,9 @@ export const useSubscriptionStore = create<SubscriptionState>()(
                   .from('subscriptions')
                   .update({ status: 'EXPIRED' })
                   .eq('id', subscription.id);
-                console.log('Subscription marked as expired:', subscription.id);
+                if (import.meta.env.DEV) {
+                  console.log('Subscription marked as expired:', subscription.id);
+                }
               } catch (error) {
                 console.error('Update expired subscription error:', error);
               }
@@ -233,7 +237,9 @@ export const useSubscriptionStore = create<SubscriptionState>()(
             });
 
             set({ subscriptions: validSubscriptions });
-            console.log('Subscriptions fetched from cloud:', validSubscriptions.length);
+            if (import.meta.env.DEV) {
+              console.log('Subscriptions fetched from cloud:', validSubscriptions.length);
+            }
           }
         } catch (error) {
           console.error('Fetch subscriptions error:', error);

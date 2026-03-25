@@ -123,13 +123,15 @@ export function QuickAddModal({ open, onClose }: QuickAddModalProps) {
     setIsSubmitting(true);
     
     try {
-      console.log('DEBUG - 开始记账:', {
-        userId: user?.id,
-        currentBookId: currentBook?.id,
-        selectedCategoryId,
-        amount,
-        type
-      });
+      if (import.meta.env.DEV) {
+        console.log('DEBUG - 开始记账:', {
+          userId: user?.id,
+          currentBookId: currentBook?.id,
+          selectedCategoryId,
+          amount,
+          type
+        });
+      }
       
       const numAmount = Math.round(parseFloat(amount) * 100);
       
@@ -152,7 +154,9 @@ export function QuickAddModal({ open, onClose }: QuickAddModalProps) {
         images: [],
       }, user.id);
       
-      console.log('DEBUG - 记账结果:', result);
+      if (import.meta.env.DEV) {
+        console.log('DEBUG - 记账结果:', result);
+      }
 
       if (result) {
         // 记账成功，自动打卡

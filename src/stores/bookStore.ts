@@ -142,7 +142,9 @@ export const useBookStore = create<BookState>()(
 
       // 为情侣/家庭账本设置实时订阅
       subscribeToBookChanges: (bookId: string, userId: string) => {
-        console.log('Starting subscription for book:', bookId);
+        if (import.meta.env.DEV) {
+          console.log('Starting subscription for book:', bookId);
+        }
         
         const subscription = supabase
           .channel(`book_${bookId}`)
@@ -152,18 +154,24 @@ export const useBookStore = create<BookState>()(
             table: 'book_members', 
             filter: `book_id=eq.${bookId}` 
           }, async (payload) => {
-            console.log('Book member changed:', payload);
+            if (import.meta.env.DEV) {
+              console.log('Book member changed:', payload);
+            }
             // 成员变化时重新加载账本数据
             if (userId) {
               await get().fetchBooks(userId);
             }
           })
           .subscribe((status) => {
-            console.log('Subscription status:', status);
+            if (import.meta.env.DEV) {
+              console.log('Subscription status:', status);
+            }
           });
 
         return () => {
-          console.log('Removing subscription for book:', bookId);
+          if (import.meta.env.DEV) {
+            console.log('Removing subscription for book:', bookId);
+          }
           supabase.removeChannel(subscription);
         };
       },

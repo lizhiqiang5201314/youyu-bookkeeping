@@ -68,12 +68,16 @@ export const useTransactionStore = create<TransactionState>()(
               filter: `book_id=eq.${bookId}`,
             },
             async (payload) => {
-              console.log('Realtime transaction changed:', payload);
+              if (import.meta.env.DEV) {
+                console.log('Realtime transaction changed:', payload);
+              }
               await get().fetchTransactions(bookId);
             }
           )
           .subscribe((status) => {
-            console.log('Transaction subscription status:', bookId, status);
+            if (import.meta.env.DEV) {
+              console.log('Transaction subscription status:', bookId, status);
+            }
           });
 
         return () => {
