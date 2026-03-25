@@ -100,32 +100,42 @@ jobs:
         # 压缩 dist 目录
         echo "📦 压缩文件..."
         tar -czvf dist.tar.gz dist/
+        ARCHIVE_PATH="/tmp/youyu-dist.tar.gz"
+        RELEASE_DIR="/tmp/youyu-dist"
         
         # 上传并解压
         echo "📤 上传到服务器..."
-        scp $SCP_OPTS dist.tar.gz $USER@$HOST:/tmp/ || {
+        scp $SCP_OPTS dist.tar.gz $USER@$HOST:$ARCHIVE_PATH || {
           echo "❌ 文件上传失败"
+          exit 1
+        }
+
+        echo "🧾 检查远端压缩包..."
+        ssh $SSH_OPTS $USER@$HOST "ls -lh $ARCHIVE_PATH" || {
+          echo "❌ 远端压缩包不存在"
           exit 1
         }
         
         echo "📂 解压并部署..."
         ssh $SSH_OPTS $USER@$HOST "
           set -eu
-          cd /tmp
-          rm -rf dist
-          tar -xzvf dist.tar.gz
+          ARCHIVE_PATH='$ARCHIVE_PATH'
+          RELEASE_DIR='$RELEASE_DIR'
+          rm -rf \"\$RELEASE_DIR\"
+          mkdir -p \"\$RELEASE_DIR\"
+          tar -xzvf \"\$ARCHIVE_PATH\" -C \"\$RELEASE_DIR\"
           if [ \"\$(id -u)\" -eq 0 ]; then
             install -d -m 755 /var/www/youyu
             rm -rf /var/www/youyu/*
-            cp -r dist/* /var/www/youyu/
+            cp -r \"\$RELEASE_DIR\"/dist/* /var/www/youyu/
             systemctl restart nginx
           else
             sudo install -d -m 755 /var/www/youyu
             sudo rm -rf /var/www/youyu/*
-            sudo cp -r dist/* /var/www/youyu/
+            sudo cp -r \"\$RELEASE_DIR\"/dist/* /var/www/youyu/
             sudo systemctl restart nginx
           fi
-          rm -rf dist dist.tar.gz
+          rm -rf \"\$RELEASE_DIR\" \"\$ARCHIVE_PATH\"
           echo '✅ 部署完成'
         " || {
           echo "❌ 部署步骤失败"
