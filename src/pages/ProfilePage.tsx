@@ -36,7 +36,7 @@ import { formatDate as formatLocalDate } from '@/services/db';
 export function ProfilePage() {
   const { user, logout, updateUser } = useAuthStore();
   const { books, currentBook, setCurrentBook, createBook, canCreateBookType, generateInviteCode, joinBookByCode, isBookOwner, deleteBook, exitBook } = useBookStore();
-  const { subscriptions } = useSubscriptionStore();
+  const { subscriptions, fetchSubscriptions, getActiveSubscription } = useSubscriptionStore();
   const { checkInStreak, totalCheckIns, longestStreak, lastCheckInDate, checkIn } = useSettingsStore();
 
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
@@ -58,23 +58,22 @@ export function ProfilePage() {
 
   const [isCheckingIn, setIsCheckingIn] = useState(false);
 
-  // 定期刷新账本数据（每3秒）
+  // 用户进入个人页时刷新一次账本和会员数据
   useEffect(() => {
     if (!user) return;
 
-    // 立即刷新一次
     useBookStore.getState().fetchBooks(user.id);
+    fetchSubscriptions(user.id);
+  }, [user?.id, fetchSubscriptions]);
 
-    // 设置轮询
-    const intervalId = setInterval(() => {
-      useBookStore.getState().fetchBooks(user.id);
-    }, 3000);
-
-    return () => clearInterval(intervalId);
-  }, [user?.id]);
+  // 打开“我的账本”弹窗时再刷新一次，确保看到最新成员/邀请码状态
+  useEffect(() => {
+    if (!user || !isBooksOpen) return;
+    useBookStore.getState().fetchBooks(user.id);
+  }, [user?.id, isBooksOpen]);
 
   const activeSubscription = user
-    ? subscriptions.find(s => s.userId === user.id && s.status === 'ACTIVE')
+    ? getActiveSubscription(user.id)
     : null;
 
   // 格式化会员到期日期

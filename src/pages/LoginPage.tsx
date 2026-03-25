@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
+import { useSubscriptionStore } from '@/stores/subscriptionStore';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { ArrowLeft } from 'lucide-react';
@@ -364,7 +365,10 @@ export function LoginPage() {
         createdAt: new Date().toISOString(),
       });
 
-      await useAuthStore.getState().preloadUserData(data.userId);
+      await Promise.all([
+        useSubscriptionStore.getState().fetchSubscriptions(data.userId),
+        useAuthStore.getState().preloadUserData(data.userId),
+      ]);
       
       toast.success(data.isNewUser ? '🎉 欢迎加入有鱼记账！' : '✨ 登录成功！');
     } catch (error: any) {
