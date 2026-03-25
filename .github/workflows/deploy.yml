@@ -37,14 +37,27 @@ jobs:
         echo "$SSH_KEY" > ~/.ssh/deploy_key
         chmod 600 ~/.ssh/deploy_key
         
+        # 调试：检查密钥是否正确写入（只显示长度）
+        echo "🔑 SSH Key 长度: $(wc -c < ~/.ssh/deploy_key)"
+        echo "🖥️  目标服务器: $USER@$HOST"
+        
+        # 测试 SSH 连接
+        echo "🔌 测试 SSH 连接..."
+        ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 $USER@$HOST "echo '✅ SSH 连接成功'" || {
+          echo "❌ SSH 连接失败"
+          exit 1
+        }
+        
         # 压缩 dist 目录
         echo "📦 压缩文件..."
         tar -czvf dist.tar.gz dist/
         
         # 上传并解压
         echo "📤 上传到服务器..."
-        ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $USER@$HOST "mkdir -p /var/www/youyu"
-        scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null dist.tar.gz $USER@$HOST:/tmp/
+        scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null dist.tar.gz $USER@$HOST:/tmp/ || {
+          echo "❌ 文件上传失败"
+          exit 1
+        }
         
         echo "📂 解压并部署..."
         ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $USER@$HOST "
@@ -55,6 +68,9 @@ jobs:
           rm -rf dist dist.tar.gz &&
           sudo systemctl restart nginx &&
           echo '✅ 部署完成'
-        "
+        " || {
+          echo "❌ 部署步骤失败"
+          exit 1
+        }
         
         echo "✅ GitHub Actions 部署成功！"
