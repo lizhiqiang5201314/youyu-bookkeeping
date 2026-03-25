@@ -75,6 +75,7 @@ jobs:
         chmod 600 ~/.ssh/deploy_key
         PORT="${PORT:-22}"
         SSH_OPTS="-i ~/.ssh/deploy_key -p ${PORT} -o BatchMode=yes -o IdentitiesOnly=yes -o PreferredAuthentications=publickey -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+        SCP_OPTS="-i ~/.ssh/deploy_key -P ${PORT} -o BatchMode=yes -o IdentitiesOnly=yes -o PreferredAuthentications=publickey -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
 
         # 生成公钥与指纹，方便和服务器 authorized_keys 对照
         ssh-keygen -y -f ~/.ssh/deploy_key > ~/.ssh/deploy_key.pub
@@ -102,7 +103,7 @@ jobs:
         
         # 上传并解压
         echo "📤 上传到服务器..."
-        scp $SSH_OPTS dist.tar.gz $USER@$HOST:/tmp/ || {
+        scp $SCP_OPTS dist.tar.gz $USER@$HOST:/tmp/ || {
           echo "❌ 文件上传失败"
           exit 1
         }
