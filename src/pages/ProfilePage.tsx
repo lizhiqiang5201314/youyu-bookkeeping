@@ -64,6 +64,8 @@ export function ProfilePage() {
   >(null);
 
   const [isCheckingIn, setIsCheckingIn] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
 
   // 用户进入个人页时刷新一次账本和会员数据
   useEffect(() => {
@@ -108,29 +110,76 @@ export function ProfilePage() {
 
   const [isAvatarLoading, setIsAvatarLoading] = useState(false);
 
+  const createCroppedAvatar = async (file: File) => {
+    const imageUrl = URL.createObjectURL(file);
+
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = reject;
+        image.src = imageUrl;
+      });
+
+      const size = Math.min(img.width, img.height);
+      const sx = (img.width - size) / 2;
+      const sy = (img.height - size) / 2;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) throw new Error('无法处理图片');
+
+      ctx.drawImage(img, sx, sy, size, size, 0, 0, 512, 512);
+
+      return await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error('头像裁剪失败'));
+        }, 'image/jpeg', 0.9);
+      });
+    } finally {
+      URL.revokeObjectURL(imageUrl);
+    }
+  };
+
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !user) return;
+    if (!file) return;
 
     if (!file.type.startsWith('image/')) {
       toast.error('请选择图片文件');
       return;
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error('图片大小不能超过 2MB');
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('图片大小不能超过 5MB');
       return;
     }
+
+    const previewUrl = URL.createObjectURL(file);
+    setAvatarPreview(previewUrl);
+    setAvatarFile(file);
+    e.target.value = '';
+  };
+
+  const handleConfirmAvatarUpload = async () => {
+    if (!avatarFile || !user) return;
 
     setIsAvatarLoading(true);
 
     try {
-      const fileExt = file.name.split('.').pop() || 'jpg';
-      const filePath = `avatars/${user.id}-${Date.now()}.${fileExt}`;
+      const croppedBlob = await createCroppedAvatar(avatarFile);
+      const filePath = `avatars/${user.id}-${Date.now()}.jpg`;
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(filePath, file, { upsert: true });
+        .upload(filePath, croppedBlob, {
+          upsert: true,
+          contentType: 'image/jpeg',
+        });
 
       if (uploadError) {
         throw uploadError;
@@ -139,11 +188,12 @@ export function ProfilePage() {
       const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
       await updateUser({ avatar: data.publicUrl });
       toast.success('头像更新成功');
+      setAvatarPreview(null);
+      setAvatarFile(null);
     } catch (error) {
       toast.error('上传失败');
     } finally {
       setIsAvatarLoading(false);
-      e.target.value = '';
     }
   };
 
@@ -530,6 +580,51 @@ export function ProfilePage() {
             <DialogTitle>数据导出</DialogTitle>
           </DialogHeader>
           <DataExport />
+        </DialogContent>
+      </Dialog>
+
+      {/* 头像裁剪确认弹窗 */}
+      <Dialog open={!!avatarPreview} onOpenChange={(open) => {
+        if (!open && avatarPreview) {
+          URL.revokeObjectURL(avatarPreview);
+          setAvatarPreview(null);
+          setAvatarFile(null);
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>确认头像</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="flex justify-center">
+              {avatarPreview && (
+                <div className="w-56 h-56 rounded-full overflow-hidden bg-gray-100 border">
+                  <img src={avatarPreview} alt="avatar-preview" className="w-full h-full object-cover" />
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-center text-gray-500">将自动裁剪为居中正方形头像</p>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+                  setAvatarPreview(null);
+                  setAvatarFile(null);
+                }}
+              >
+                取消
+              </Button>
+              <Button
+                className="flex-1 bg-teal-500 hover:bg-teal-600"
+                onClick={handleConfirmAvatarUpload}
+                disabled={isAvatarLoading}
+              >
+                {isAvatarLoading ? '上传中...' : '确认上传'}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
