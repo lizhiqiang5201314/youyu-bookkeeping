@@ -37,7 +37,7 @@ interface HomePageProps {
 export function HomePage(_props: HomePageProps = {}) {
   const { user } = useAuthStore();
   const { currentBook, books, setCurrentBook, createBook, canCreateBookType, categories, subscribeToBookChanges } = useBookStore();
-  const { getTransactionsByDateRange, getSummary, fetchTransactions, deleteTransaction } = useTransactionStore();
+  const { getTransactionsByDateRange, getSummary, fetchTransactions, deleteTransaction, subscribeToTransactionChanges } = useTransactionStore();
   const [showBookSelector, setShowBookSelector] = useState(false);
   const [showCreateBook, setShowCreateBook] = useState(false);
   const [newBookName, setNewBookName] = useState('');
@@ -81,6 +81,13 @@ export function HomePage(_props: HomePageProps = {}) {
       return subscribeToBookChanges(currentBook.id, user.id);
     }
   }, [currentBook?.id, currentBook?.type, subscribeToBookChanges, user?.id]);
+
+  // 实时订阅当前账本的交易变化
+  useEffect(() => {
+    if (currentBook?.id) {
+      return subscribeToTransactionChanges(currentBook.id);
+    }
+  }, [currentBook?.id, subscribeToTransactionChanges]);
 
   const handleEditTransaction = (transaction: Transaction) => {
     setEditingTransaction(transaction);

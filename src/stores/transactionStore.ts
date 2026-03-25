@@ -27,6 +27,7 @@ interface TransactionState {
 
   // Actions
   init: () => void; // 🧹 初始化清空
+  subscribeToTransactionChanges: (bookId: string) => (() => void);
   fetchTransactions: (bookId: string) => Promise<void>;
   addTransaction: (data: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>, userId: string) => Promise<Transaction | null>;
   updateTransaction: (id: string, data: Partial<Transaction>, bookId: string) => Promise<void>;
@@ -53,6 +54,28 @@ export const useTransactionStore = create<TransactionState>()(
       // 🧹 初始化时清空所有数据
       init: () => {
         set({ transactionsMap: {} });
+      },
+
+      subscribeToTransactionChanges: (bookId: string) => {
+        const channel = supabase
+          .channel(`transactions_${bookId}`)
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'transactions',
+              filter: `book_id=eq.${bookId}`,
+            },
+            async () => {
+              await get().fetchTransactions(bookId);
+            }
+          )
+          .subscribe();
+
+        return () => {
+          supabase.removeChannel(channel);
+        };
       },
 
       fetchTransactions: async (bookId) => {
