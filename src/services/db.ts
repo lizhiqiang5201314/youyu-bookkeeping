@@ -12,12 +12,21 @@ class BookkeepingDatabase extends Dexie {
   constructor() {
     super('BookkeepingDB');
     
-    this.version(2).stores({
+    this.version(3).stores({
       books: 'id, createdBy, type, lastModified',
       categories: 'id, bookId, type, lastModified',
-      transactions: 'id, bookId, date, categoryId, type, lastModified',
+      transactions: 'id, bookId, recordDate, categoryId, type, lastModified',
       budgets: 'id, bookId, year, month, lastModified',
       bookInvites: 'id, bookId, code, expiresAt',
+    }).upgrade(tx => {
+      // 从 version 2 升级：修复 transactions 索引字段
+      console.log('Upgrading database to version 3...');
+      return tx.table('transactions').toCollection().modify(transaction => {
+        // 如果有 date 字段但没有 recordDate，迁移数据
+        if (transaction.date && !transaction.recordDate) {
+          transaction.recordDate = transaction.date;
+        }
+      });
     });
   }
 }
