@@ -5,7 +5,9 @@ import { supabase } from '@/services/supabase';
 import { db } from '@/services/db';
 import { useSubscriptionStore } from './subscriptionStore';
 import type { User, Category } from '@/types';
-import bcrypt from 'bcryptjs';
+
+// Edge Function 基础 URL
+const EDGE_FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
 
 interface AuthState {
   user: User | null;
@@ -40,35 +42,24 @@ export const useAuthStore = create<AuthState>()(
         try {
           console.log('🔐 尝试登录:', phone);
 
-          // 查询用户
-          const { data: users, error } = await supabase
-            .from('app_users')
-            .select('*')
-            .eq('phone', phone)
-            .single();
+          // 调用 Edge Function 进行密码验证
+          const response = await fetch(`${EDGE_FUNCTION_URL}/password-login`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ phone, password }),
+          });
 
-          if (error || !users) {
-            console.error('❌ 用户不存在');
-            set({ isLoading: false, error: '账号不存在' });
+          const data = await response.json();
+
+          if (!response.ok) {
+            console.error('❌ 登录失败:', data.error);
+            set({ isLoading: false, error: data.error || '登录失败' });
             return false;
           }
 
-          // 验证密码
-          const isValid = await bcrypt.compare(password, users.password_hash);
-          
-          if (!isValid) {
-            console.error('❌ 密码错误');
-            set({ isLoading: false, error: '密码错误' });
-            return false;
-          }
-
-          const user: User = {
-            id: users.id,
-            phone: users.phone,
-            nickname: users.nickname || `用户${users.phone.slice(-4)}`,
-            avatar: users.avatar,
-            createdAt: users.created_at,
-          };
+          const user = data.user;
           
           set({
             user,
@@ -99,45 +90,24 @@ export const useAuthStore = create<AuthState>()(
         try {
           console.log('📝 注册新用户:', phone);
 
-          // 检查手机号是否已存在
-          const { data: existingUser } = await supabase
-            .from('app_users')
-            .select('id')
-            .eq('phone', phone)
-            .single();
+          // 调用 Edge Function 进行注册
+          const response = await fetch(`${EDGE_FUNCTION_URL}/password-register`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ phone, password }),
+          });
 
-          if (existingUser) {
-            set({ isLoading: false, error: '该手机号已注册' });
+          const data = await response.json();
+
+          if (!response.ok) {
+            console.error('❌ 注册失败:', data.error);
+            set({ isLoading: false, error: data.error || '注册失败' });
             return false;
           }
 
-          // 加密密码
-          const passwordHash = await bcrypt.hash(password, 10);
-
-          // 创建用户
-          const { data: newUser, error } = await supabase
-            .from('app_users')
-            .insert({
-              phone,
-              password_hash: passwordHash,
-              nickname: `用户${phone.slice(-4)}`,
-            })
-            .select()
-            .single();
-
-          if (error || !newUser) {
-            console.error('❌ 注册失败:', error);
-            set({ isLoading: false, error: '注册失败，请重试' });
-            return false;
-          }
-
-          const user: User = {
-            id: newUser.id,
-            phone: newUser.phone,
-            nickname: newUser.nickname,
-            avatar: newUser.avatar,
-            createdAt: newUser.created_at,
-          };
+          const user = data.user;
           
           set({
             user,
