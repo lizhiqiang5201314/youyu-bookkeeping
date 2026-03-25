@@ -30,7 +30,7 @@ interface BookState {
   joinBookByCode: (code: string, userId: string) => Promise<Book | null>;
   
   // 实时同步
-  subscribeToBookChanges: (bookId: string) => (() => void);
+  subscribeToBookChanges: (bookId: string, userId: string) => (() => void);
   
   // Category
   fetchCategories: (bookId: string) => Promise<void>;
@@ -141,7 +141,7 @@ export const useBookStore = create<BookState>()(
       },
 
       // 为情侣/家庭账本设置实时订阅
-      subscribeToBookChanges: (bookId: string) => {
+      subscribeToBookChanges: (bookId: string, userId: string) => {
         console.log('Starting subscription for book:', bookId);
         
         const subscription = supabase
@@ -154,9 +154,8 @@ export const useBookStore = create<BookState>()(
           }, async (payload) => {
             console.log('Book member changed:', payload);
             // 成员变化时重新加载账本数据
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user?.id) {
-              await get().fetchBooks(user.id);
+            if (userId) {
+              await get().fetchBooks(userId);
             }
           })
           .subscribe((status) => {

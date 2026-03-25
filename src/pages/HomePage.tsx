@@ -79,16 +79,16 @@ export function HomePage(_props: HomePageProps = {}) {
 
   // 情侣/家庭账本实时订阅成员变化
   useEffect(() => {
-    if (currentBook && (currentBook.type === 'COUPLE' || currentBook.type === 'FAMILY')) {
-      // 启动实时订阅
-      const unsubscribe = subscribeToBookChanges(currentBook.id);
+    if (currentBook && (currentBook.type === 'COUPLE' || currentBook.type === 'FAMILY') && user?.id) {
+      // 启动实时订阅，传入 userId 而不是依赖 supabase.auth.getUser()
+      const unsubscribe = subscribeToBookChanges(currentBook.id, user.id);
       
-      // 同时启动轮询（每5秒刷新一次，作为备用）
+      // 轮询作为失败兜底（30秒一次，而不是5秒）
       const intervalId = setInterval(() => {
         if (user?.id) {
           useBookStore.getState().fetchBooks(user.id);
         }
-      }, 5000);
+      }, 30000); // 改为30秒
       
       return () => {
         unsubscribe();
