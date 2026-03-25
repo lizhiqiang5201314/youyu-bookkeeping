@@ -53,27 +53,46 @@ jobs:
           echo "✅ REMOTE_USER 已配置"
         fi
 
+        if [ -n "${{ secrets.REMOTE_PORT }}" ]; then
+          echo "✅ REMOTE_PORT 已配置"
+        else
+          echo "ℹ️ REMOTE_PORT 未配置，将默认使用 22"
+        fi
+
     - name: Deploy to server
       env:
         SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         HOST: ${{ secrets.REMOTE_HOST }}
         USER: ${{ secrets.REMOTE_USER }}
+        PORT: ${{ secrets.REMOTE_PORT }}
       run: |
+        set -eu
+
         # 设置 SSH
         mkdir -p ~/.ssh
         # 使用 printf 保留换行符
         printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
         chmod 600 ~/.ssh/deploy_key
+        PORT="${PORT:-22}"
+        SSH_OPTS="-i ~/.ssh/deploy_key -p ${PORT} -o BatchMode=yes -o IdentitiesOnly=yes -o PreferredAuthentications=publickey -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+
+        # 生成公钥与指纹，方便和服务器 authorized_keys 对照
+        ssh-keygen -y -f ~/.ssh/deploy_key > ~/.ssh/deploy_key.pub
         
         # 调试：检查密钥是否正确写入
         echo "🔑 SSH Key 文件大小: $(wc -c < ~/.ssh/deploy_key)"
         echo "🔑 SSH Key 行数: $(wc -l < ~/.ssh/deploy_key)"
-        echo "🖥️  目标服务器: $USER@$HOST"
+        echo "🔑 SSH 公钥指纹: $(ssh-keygen -lf ~/.ssh/deploy_key.pub | awk '{print $2, $4}')"
+        echo "🖥️  目标服务器: $USER@$HOST:$PORT"
+        echo "🔑 请确认服务器 authorized_keys 中包含下面这把公钥："
+        cat ~/.ssh/deploy_key.pub
         
         # 测试 SSH 连接
         echo "🔌 测试 SSH 连接..."
-        ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 $USER@$HOST "echo '✅ SSH 连接成功'" || {
+        ssh $SSH_OPTS $USER@$HOST "echo '✅ SSH 连接成功'; whoami; hostname" || {
           echo "❌ SSH 连接失败"
+          echo "👉 请核对 REMOTE_USER 是否和服务器 authorized_keys 所属用户一致"
+          echo "👉 如果公钥加在 /root/.ssh/authorized_keys，就必须用 root 登录"
           exit 1
         }
         
@@ -83,19 +102,29 @@ jobs:
         
         # 上传并解压
         echo "📤 上传到服务器..."
-        scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null dist.tar.gz $USER@$HOST:/tmp/ || {
+        scp $SSH_OPTS dist.tar.gz $USER@$HOST:/tmp/ || {
           echo "❌ 文件上传失败"
           exit 1
         }
         
         echo "📂 解压并部署..."
-        ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $USER@$HOST "
-          cd /tmp &&
-          rm -rf /var/www/youyu/* &&
-          tar -xzvf dist.tar.gz &&
-          cp -r dist/* /var/www/youyu/ &&
-          rm -rf dist dist.tar.gz &&
-          sudo systemctl restart nginx &&
+        ssh $SSH_OPTS $USER@$HOST "
+          set -eu
+          cd /tmp
+          rm -rf dist
+          tar -xzvf dist.tar.gz
+          if [ \"\$(id -u)\" -eq 0 ]; then
+            install -d -m 755 /var/www/youyu
+            rm -rf /var/www/youyu/*
+            cp -r dist/* /var/www/youyu/
+            systemctl restart nginx
+          else
+            sudo install -d -m 755 /var/www/youyu
+            sudo rm -rf /var/www/youyu/*
+            sudo cp -r dist/* /var/www/youyu/
+            sudo systemctl restart nginx
+          fi
+          rm -rf dist dist.tar.gz
           echo '✅ 部署完成'
         " || {
           echo "❌ 部署步骤失败"
