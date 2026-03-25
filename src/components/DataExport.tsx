@@ -14,11 +14,12 @@ export function DataExport() {
   const { currentBook, categories } = useBookStore();
   const { getTransactionsByDateRange } = useTransactionStore();
   const [isExporting, setIsExporting] = useState(false);
+  const [exportRange, setExportRange] = useState<'month' | 'year'>('year');
 
   // 获取统计数据
   const stats = useMemo(() => {
     if (!currentBook) return null;
-    const dateRange = getDateRange('year');
+    const dateRange = getDateRange(exportRange);
     const transactions = getTransactionsByDateRange(currentBook.id, dateRange);
     
     const totalIncome = transactions
@@ -35,7 +36,7 @@ export function DataExport() {
       expense: totalExpense,
       balance: totalIncome - totalExpense,
     };
-  }, [currentBook, getTransactionsByDateRange]);
+  }, [currentBook, getTransactionsByDateRange, exportRange]);
 
   const exportToExcel = async () => {
     if (!currentBook) {
@@ -46,7 +47,7 @@ export function DataExport() {
     setIsExporting(true);
     
     try {
-      const dateRange = getDateRange('year');
+      const dateRange = getDateRange(exportRange);
       const transactions = getTransactionsByDateRange(currentBook.id, dateRange);
       
       if (transactions.length === 0) {
@@ -180,15 +181,34 @@ export function DataExport() {
             <div>
               <h3 className="font-medium text-gray-900">Excel 导出</h3>
               <p className="text-xs text-gray-500">
-                {stats ? `${stats.count} 条记录 · 本年内数据` : '加载中...'}
+                {stats ? `${stats.count} 条记录 · ${exportRange === 'month' ? '本月' : '本年'}数据` : '加载中...'}
               </p>
             </div>
+          </div>
+
+          <div className="flex gap-2 mb-4">
+            <Button
+              variant={exportRange === 'month' ? 'default' : 'outline'}
+              size="sm"
+              className={exportRange === 'month' ? 'bg-green-600 hover:bg-green-700' : ''}
+              onClick={() => setExportRange('month')}
+            >
+              本月
+            </Button>
+            <Button
+              variant={exportRange === 'year' ? 'default' : 'outline'}
+              size="sm"
+              className={exportRange === 'year' ? 'bg-green-600 hover:bg-green-700' : ''}
+              onClick={() => setExportRange('year')}
+            >
+              本年
+            </Button>
           </div>
 
           <div className="space-y-2 text-sm text-gray-600 mb-4">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-gray-400" />
-              <span>导出范围：本年度数据</span>
+              <span>导出范围：{exportRange === 'month' ? '本月数据' : '本年度数据'}</span>
             </div>
             <div className="flex items-center gap-2">
               <FileSpreadsheet className="w-4 h-4 text-gray-400" />
@@ -221,7 +241,7 @@ export function DataExport() {
         <h4 className="text-sm font-medium text-gray-700 mb-2">使用说明</h4>
         <ul className="text-xs text-gray-500 space-y-1">
           <li>• 导出文件为 CSV 格式，可用 Excel、WPS 等软件打开</li>
-          <li>• 包含本年度所有记账记录</li>
+          <li>• 包含所选时间范围内的所有记账记录</li>
           <li>• 文件已添加 UTF-8 BOM，支持中文显示</li>
         </ul>
       </div>

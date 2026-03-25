@@ -304,7 +304,7 @@ export function HomePage(_props: HomePageProps = {}) {
       <div className="px-4 mt-6 pb-8">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900">最近记账</h2>
-          <Button variant="ghost" size="sm" className="text-teal-600">
+          <Button variant="ghost" size="sm" className="text-teal-600" onClick={() => _props.onNavigate?.('statistics')}>
             查看全部
             <ChevronRight className="w-4 h-4 ml-1" />
           </Button>
