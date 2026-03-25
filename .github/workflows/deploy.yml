@@ -125,14 +125,14 @@ jobs:
           mkdir -p \"\$RELEASE_DIR\"
           tar -xzvf \"\$ARCHIVE_PATH\" -C \"\$RELEASE_DIR\"
           if [ \"\$(id -u)\" -eq 0 ]; then
-            install -d -m 755 /var/www/youyu
-            rm -rf /var/www/youyu/*
-            cp -r \"\$RELEASE_DIR\"/dist/* /var/www/youyu/
+            install -d -m 755 /var/www/youyu/dist
+            rm -rf /var/www/youyu/dist/*
+            cp -r \"\$RELEASE_DIR\"/dist/* /var/www/youyu/dist/
             systemctl restart nginx
           else
-            sudo install -d -m 755 /var/www/youyu
-            sudo rm -rf /var/www/youyu/*
-            sudo cp -r \"\$RELEASE_DIR\"/dist/* /var/www/youyu/
+            sudo install -d -m 755 /var/www/youyu/dist
+            sudo rm -rf /var/www/youyu/dist/*
+            sudo cp -r \"\$RELEASE_DIR\"/dist/* /var/www/youyu/dist/
             sudo systemctl restart nginx
           fi
           rm -rf \"\$RELEASE_DIR\" \"\$ARCHIVE_PATH\"
