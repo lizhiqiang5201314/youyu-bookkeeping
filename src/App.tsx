@@ -7,7 +7,7 @@ import { Toaster } from '@/components/ui/sonner';
 import './App.css';
 
 function App() {
-  const { isAuthenticated, isLoading, user } = useAuthStore();
+  const { isAuthenticated, isLoading, user, isDataPreloaded } = useAuthStore();
   const { fetchBooks } = useBookStore();
   const [isReady, setIsReady] = useState(false);
   const hasInitialized = useRef(false);
@@ -17,9 +17,9 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // 登录后加载云端数据
+    // 登录后加载云端数据（只在 isDataPreloaded 为 false 时执行）
     const loadData = async () => {
-      if (isAuthenticated && user && !hasInitialized.current) {
+      if (isAuthenticated && user && !hasInitialized.current && !isDataPreloaded) {
         hasInitialized.current = true;
         await fetchBooks(user.id);
 
@@ -31,7 +31,7 @@ function App() {
       }
     };
     loadData();
-  }, [isAuthenticated, user]); // 移除 fetchBooks 和 books 依赖
+  }, [isAuthenticated, user, isDataPreloaded]); // 添加 isDataPreloaded 依赖
 
   if (!isReady || isLoading) {
     return (

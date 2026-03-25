@@ -66,6 +66,7 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: true,
             isLoading: false,
             error: null,
+            isDataPreloaded: true, // 标记数据已预加载
           });
           
           // 登录成功后同步会员信息
@@ -114,6 +115,7 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: true,
             isLoading: false,
             error: null,
+            isDataPreloaded: true, // 标记数据已预加载
           });
           
           // 注册成功后同步会员信息（初始为空）
