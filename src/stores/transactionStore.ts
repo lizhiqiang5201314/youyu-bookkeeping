@@ -67,11 +67,14 @@ export const useTransactionStore = create<TransactionState>()(
               table: 'transactions',
               filter: `book_id=eq.${bookId}`,
             },
-            async () => {
+            async (payload) => {
+              console.log('Realtime transaction changed:', payload);
               await get().fetchTransactions(bookId);
             }
           )
-          .subscribe();
+          .subscribe((status) => {
+            console.log('Transaction subscription status:', bookId, status);
+          });
 
         return () => {
           supabase.removeChannel(channel);

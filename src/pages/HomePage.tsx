@@ -85,6 +85,7 @@ export function HomePage(_props: HomePageProps = {}) {
   // 实时订阅当前账本的交易变化
   useEffect(() => {
     if (currentBook?.id) {
+      console.log('Start transaction realtime subscription:', currentBook.id);
       return subscribeToTransactionChanges(currentBook.id);
     }
   }, [currentBook?.id, subscribeToTransactionChanges]);
