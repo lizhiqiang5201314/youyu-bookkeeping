@@ -11,11 +11,6 @@ import { DataExport } from '@/components/DataExport';
 
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
-  Settings,
-  Shield,
-  HelpCircle,
-  LogOut,
-  ChevronRight,
   Crown,
   BookOpen,
   Download,
@@ -28,12 +23,15 @@ import {
   Trash2,
   Flame,
   Award,
-  CalendarCheck
+  CalendarCheck,
+  LogOut,
+  ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { SubscriptionPlans } from '@/components/SubscriptionPlans';
 import type { BookType } from '@/types';
+import { formatDate as formatLocalDate } from '@/services/db';
 
 export function ProfilePage() {
   const { user, logout, updateUser } = useAuthStore();
@@ -249,7 +247,7 @@ export function ProfilePage() {
 
   // 获取今天日期
   const getToday = () => {
-    return new Date().toISOString().split('T')[0];
+    return formatLocalDate(new Date());
   };
 
   // 检查今天是否已打卡
@@ -277,31 +275,7 @@ export function ProfilePage() {
 
     const types: BookType[] = ['PERSONAL', 'COUPLE', 'FAMILY'];
     return types.map(type => {
-      // 使用本地检查（快速响应）
-      const userBooks = books.filter(b => b.createdBy === user.id && b.type === type);
-      const existingBook = userBooks.find(b => b.type === type);
-
-      let disabled = false;
-      let message = '';
-
-      if (existingBook) {
-        disabled = true;
-        message = `您已有一个${type === 'COUPLE' ? '情侣' : type === 'FAMILY' ? '家庭' : '个人'}账本了`;
-      } else if (type === 'COUPLE') {
-        const subscriptionStore = useSubscriptionStore.getState();
-        const isCoupleActive = subscriptionStore.isSubscriptionActive(user.id, 'COUPLE');
-        if (!isCoupleActive) {
-          disabled = true;
-          message = '需要开通情侣会员才能创建情侣账本';
-        }
-      } else if (type === 'FAMILY') {
-        const subscriptionStore = useSubscriptionStore.getState();
-        const isFamilyActive = subscriptionStore.isSubscriptionActive(user.id, 'FAMILY');
-        if (!isFamilyActive) {
-          disabled = true;
-          message = '需要开通家庭会员才能创建家庭账本';
-        }
-      }
+      const check = canCreateBookType(user.id, type);
 
       const labels: Record<BookType, string> = {
         PERSONAL: '个人账本',
@@ -317,8 +291,8 @@ export function ProfilePage() {
         type,
         label: labels[type],
         icon: icons[type],
-        disabled,
-        message
+        disabled: !check.canCreate,
+        message: check.message
       };
     });
   };
@@ -326,6 +300,8 @@ export function ProfilePage() {
   const menuItems = [
     {
       icon: Flame,
+      iconColor: 'text-orange-500',
+      bgColor: 'bg-orange-100',
       label: '每日打卡',
       value: isCheckedInToday() ? `连续${checkInStreak}天` : '去打卡',
       highlight: !isCheckedInToday(),
@@ -333,6 +309,8 @@ export function ProfilePage() {
     },
     {
       icon: Crown,
+      iconColor: 'text-yellow-600',
+      bgColor: 'bg-yellow-100',
       label: '会员中心',
       value: activeSubscription
         ? `${formatExpiryDate(activeSubscription.endDate)}到期`
@@ -342,35 +320,23 @@ export function ProfilePage() {
     },
     {
       icon: BookOpen,
+      iconColor: 'text-blue-500',
+      bgColor: 'bg-blue-100',
       label: '我的账本',
       value: `${books.length}个`,
       onClick: () => setIsBooksOpen(true)
     },
     {
       icon: Download,
+      iconColor: 'text-green-500',
+      bgColor: 'bg-green-100',
       label: '数据导出',
       onClick: () => setIsExportOpen(true)
-    },
-
-    {
-      icon: Shield,
-      label: '隐私安全',
-      onClick: () => toast.info('密码加密存储，数据安全有保障')
-    },
-    {
-      icon: Settings,
-      label: '通用设置',
-      onClick: () => toast.info('设置功能开发中')
-    },
-    {
-      icon: HelpCircle,
-      label: '帮助与反馈',
-      onClick: () => toast.info('如有问题请联系客服')
     },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 overflow-y-auto">
       {/* 顶部背景 */}
       <div className="bg-gradient-to-br from-teal-500 via-cyan-500 to-blue-600 pt-12 pb-20">
         <div className="px-4">
@@ -462,11 +428,11 @@ export function ProfilePage() {
                 <div className="flex items-center gap-3">
                   <div className={cn(
                     'w-9 h-9 rounded-lg flex items-center justify-center',
-                    item.highlight ? 'bg-orange-100' : 'bg-gray-100'
+                    item.bgColor || (item.highlight ? 'bg-orange-100' : 'bg-gray-100')
                   )}>
                     <item.icon className={cn(
                       'w-4 h-4',
-                      item.highlight ? 'text-orange-500' : 'text-gray-500'
+                      item.iconColor || (item.highlight ? 'text-orange-500' : 'text-gray-500')
                     )} />
                   </div>
                   <span className={cn(

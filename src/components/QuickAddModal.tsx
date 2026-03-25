@@ -8,11 +8,12 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { TransactionType } from '@/types';
+import { formatDate as formatLocalDate, parseDate } from '@/services/db';
 import { Calendar, X, StickyNote, Loader2 } from 'lucide-react';
 
 // 日期格式化工具
 const formatDateDisplay = (dateStr: string) => {
-  const date = new Date(dateStr);
+  const date = parseDate(dateStr);
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
@@ -33,7 +34,7 @@ const formatDateDisplay = (dateStr: string) => {
 
 // 滚轮式日期选择器
 function DatePicker({ value, onChange, onCancel }: { value: string; onChange: (date: string) => void; onCancel: () => void }) {
-  const date = new Date(value);
+  const date = parseDate(value);
   const [selectedYear, setSelectedYear] = useState(date.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(date.getMonth() + 1);
   const [selectedDay, setSelectedDay] = useState(date.getDate());
@@ -208,7 +209,7 @@ export function QuickAddModal({ open, onClose }: QuickAddModalProps) {
   const [amount, setAmount] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [note, setNote] = useState('');
-  const [recordDate, setRecordDate] = useState(new Date().toISOString().split('T')[0]);
+  const [recordDate, setRecordDate] = useState(() => formatLocalDate(new Date()));
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
@@ -224,7 +225,7 @@ export function QuickAddModal({ open, onClose }: QuickAddModalProps) {
     if (open && currentBook) {
       setAmount('');
       setNote('');
-      setRecordDate(new Date().toISOString().split('T')[0]);
+      setRecordDate(formatLocalDate(new Date()));
       setShowNoteInput(false);
       // 强制重新加载分类
       fetchCategories(currentBook.id).then(() => {

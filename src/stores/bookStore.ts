@@ -8,6 +8,7 @@ import { BUILTIN_EXPENSE_CATEGORIES, BUILTIN_INCOME_CATEGORIES } from '@/utils/c
 import { useSubscriptionStore } from './subscriptionStore';
 import { generateUUID } from '@/utils/uuid';
 import { toast } from 'sonner';
+import { useAuthStore } from './authStore';
 
 interface BookState {
   books: Book[];
@@ -42,6 +43,45 @@ interface BookState {
   hasBookType: (userId: string, type: BookType) => boolean;
 }
 
+function getNextCurrentBook(currentBook: Book | null, books: Book[]): Book | null {
+  if (!currentBook) {
+    return books[0] || null;
+  }
+
+  return books.find(book => book.id === currentBook.id) || books[0] || null;
+}
+
+function getBookTypeLabel(type: BookType): string {
+  if (type === 'PERSONAL') return '个人';
+  if (type === 'COUPLE') return '情侣';
+  return '家庭';
+}
+
+function removeBookFromState(
+  state: Pick<BookState, 'books' | 'currentBook' | 'categories' | 'categoriesMap'>,
+  bookId: string
+) {
+  const nextBooks = state.books.filter(book => book.id !== bookId);
+  const nextCurrentBook = state.currentBook?.id === bookId
+    ? nextBooks[0] || null
+    : nextBooks.find(book => book.id === state.currentBook?.id) || state.currentBook;
+  const { [bookId]: _removed, ...nextCategoriesMap } = state.categoriesMap;
+
+  return {
+    books: nextBooks,
+    currentBook: nextCurrentBook,
+    categoriesMap: nextCategoriesMap,
+    categories: nextCurrentBook ? (nextCategoriesMap[nextCurrentBook.id] || []) : [],
+  };
+}
+
+async function removeLocalBookData(bookId: string) {
+  await db.books.delete(bookId);
+  await db.categories.where('bookId').equals(bookId).delete();
+  await db.transactions.where('bookId').equals(bookId).delete();
+  await db.budgets.where('bookId').equals(bookId).delete();
+}
+
 export const useBookStore = create<BookState>()(
   persist(
     (set, get) => ({
@@ -64,24 +104,25 @@ export const useBookStore = create<BookState>()(
         
         if (existingBook) {
           const isCreator = existingBook.createdBy === userId;
+          const bookTypeLabel = getBookTypeLabel(type);
           return { 
             canCreate: false, 
             message: isCreator 
-              ? `您已创建了一个${type === 'COUPLE' ? '情侣' : '家庭'}账本`
-              : `您已加入了一个${type === 'COUPLE' ? '情侣' : '家庭'}账本，请先退出`
+              ? `您已创建了一个${bookTypeLabel}账本`
+              : `您已加入了一个${bookTypeLabel}账本，请先退出`
           };
         }
         
         if (type === 'COUPLE') {
           const subStore = useSubscriptionStore.getState();
-          if (!subStore.isSubscriptionActive(userId, 'COUPLE')) {
+          if (!subStore.canCreateCoupleBook(userId)) {
             return { canCreate: false, message: '需要开通情侣会员' };
           }
         }
         
         if (type === 'FAMILY') {
           const subStore = useSubscriptionStore.getState();
-          if (!subStore.isSubscriptionActive(userId, 'FAMILY')) {
+          if (!subStore.canCreateFamilyBook(userId)) {
             return { canCreate: false, message: '需要开通家庭会员' };
           }
         }
@@ -204,9 +245,9 @@ export const useBookStore = create<BookState>()(
             await db.books.put({ ...book, synced: true, lastModified: Date.now() });
           }
 
-          set({ 
+          set({
             books,
-            currentBook: get().currentBook || books[0] || null,
+            currentBook: getNextCurrentBook(get().currentBook, books),
           });
 
           // 为所有账本加载分类
@@ -272,19 +313,29 @@ export const useBookStore = create<BookState>()(
             created_by: userId,
           });
 
-          // 如果是情侣/家庭账本，创建者自动成为第一个成员
+          // 如果是情侣/家庭账本，确保创建者拥有 OWNER 成员关系
           if (type === 'COUPLE' || type === 'FAMILY') {
-            await supabase.from('book_members').insert({
+            const joinedAt = new Date().toISOString();
+
+            const { error: memberError } = await supabase.from('book_members').upsert({
               book_id: book.id,
               user_id: userId,
               role: 'OWNER',
-              joined_at: new Date().toISOString(),
+              joined_at: joinedAt,
+            }, {
+              onConflict: 'book_id,user_id',
+              ignoreDuplicates: true,
             });
+
+            if (memberError) {
+              throw memberError;
+            }
+
             // 更新本地成员
             book.members = [{
               userId,
               role: 'OWNER',
-              joinedAt: new Date().toISOString(),
+              joinedAt,
             }];
           }
 
@@ -347,24 +398,19 @@ export const useBookStore = create<BookState>()(
           return;
         }
 
-        // 更新UI
-        set(state => ({
-          books: state.books.filter(b => b.id !== bookId),
-          currentBook: state.currentBook?.id === bookId
-            ? state.books.find(b => b.id !== bookId) || null
-            : state.currentBook,
-        }));
-
-        // 删除本地
-        await db.books.delete(bookId);
-        await db.categories.where('bookId').equals(bookId).delete();
-        await db.transactions.where('bookId').equals(bookId).delete();
-
         // 删除云端（级联删除会自动处理成员和分类）
         try {
-          await supabase.from('books').delete().eq('id', bookId);
+          const { error } = await supabase.from('books').delete().eq('id', bookId);
+          if (error) {
+            throw error;
+          }
+
+          await removeLocalBookData(bookId);
+
+          set(state => removeBookFromState(state, bookId));
         } catch (error) {
           console.error('Delete book error:', error);
+          toast.error('删除账本失败');
         }
       },
 
@@ -378,46 +424,26 @@ export const useBookStore = create<BookState>()(
           return false;
         }
 
-        // 更新UI
-        set(state => ({
-          books: state.books.filter(b => b.id !== bookId),
-          currentBook: state.currentBook?.id === bookId
-            ? state.books.find(b => b.id !== bookId) || null
-            : state.currentBook,
-        }));
-
-        // 删除本地账本数据
-        await db.books.delete(bookId);
-        
-        // 删除该用户在该账本的所有交易记录
-        const userTransactions = await db.transactions
-          .where('bookId')
-          .equals(bookId)
-          .and(t => t.userId === userId)
-          .toArray();
-        
-        for (const tx of userTransactions) {
-          await db.transactions.delete(tx.id);
-        }
-
-        // 删除云端成员关系
         try {
-          await supabase
+          const { error } = await supabase
             .from('book_members')
             .delete()
             .eq('book_id', bookId)
             .eq('user_id', userId);
-          
-          // 删除云端该用户的交易记录
-          await supabase
-            .from('transactions')
-            .delete()
-            .eq('book_id', bookId)
-            .eq('user_id', userId);
-          
+
+          if (error) {
+            throw error;
+          }
+
+          // 本地移除整本账本数据，但保留云端共享历史给剩余成员
+          await removeLocalBookData(bookId);
+
+          set(state => removeBookFromState(state, bookId));
+
           return true;
         } catch (error) {
           console.error('Exit book error:', error);
+          toast.error('退出账本失败');
           return false;
         }
       },
@@ -432,6 +458,12 @@ export const useBookStore = create<BookState>()(
 
         if (book.type === 'PERSONAL') {
           toast.error('个人账本不能邀请');
+          return null;
+        }
+
+        const currentUserId = useAuthStore.getState().user?.id;
+        if (!currentUserId || book.createdBy !== currentUserId) {
+          toast.error('只有创建者可以生成邀请码');
           return null;
         }
 
@@ -522,19 +554,37 @@ export const useBookStore = create<BookState>()(
             }
           }
 
+          // 先抢占邀请码，避免同一个邀请码被并发重复使用
+          const { data: claimedInvite, error: claimError } = await supabase
+            .from('book_invites')
+            .update({ used_count: invite.used_count + 1 })
+            .eq('id', invite.id)
+            .eq('used_count', invite.used_count)
+            .select('id')
+            .single();
+
+          if (claimError || !claimedInvite) {
+            toast.error('邀请码已被使用');
+            return null;
+          }
+
           // 添加成员
-          await supabase.from('book_members').insert({
+          const { error: joinError } = await supabase.from('book_members').insert({
             book_id: invite.book_id,
             user_id: userId,
             role: 'MEMBER',
             joined_at: new Date().toISOString(),
           });
 
-          // 更新邀请码
-          await supabase
-            .from('book_invites')
-            .update({ used_count: invite.used_count + 1 })
-            .eq('id', invite.id);
+          if (joinError) {
+            await supabase
+              .from('book_invites')
+              .update({ used_count: invite.used_count })
+              .eq('id', invite.id)
+              .eq('used_count', invite.used_count + 1);
+
+            throw joinError;
+          }
 
           // 重新加载账本
           await get().fetchBooks(userId);
@@ -548,46 +598,59 @@ export const useBookStore = create<BookState>()(
             await get().fetchBooks(userId);
             return get().books.find(b => b.id === inviteBookId) || null;
           }
+          if (typeof error?.message === 'string') {
+            if (error.message.includes('shared_book_member_limit_reached')) {
+              toast.error('账本成员已满');
+              return null;
+            }
+            if (error.message.includes('shared_book_same_type_exists')) {
+              toast.error('您已有一个同类型账本，请先退出');
+              return null;
+            }
+          }
           toast.error('加入失败');
           return null;
         }
       },
 
-      // 加载分类
+      // 加载分类 - 等待云端数据确保分类就绪
       fetchCategories: async (bookId) => {
         if (!bookId) return;
+        set({ isLoading: true });
+        
         try {
-          // 先尝试从本地数据库加载（更快，离线也可用）
-          const localCats = await db.categories.where('bookId').equals(bookId).toArray();
-          
-          if (localCats.length > 0) {
-            const categories: Category[] = localCats.map(c => ({
-              id: c.id,
-              bookId: c.bookId,
-              name: c.name,
-              type: c.type as 'INCOME' | 'EXPENSE',
-              icon: c.icon,
-              color: c.color,
-              sortOrder: c.sortOrder,
-              isBuiltin: c.isBuiltin,
-            }));
-            
-            set(state => ({
-              categoriesMap: { ...state.categoriesMap, [bookId]: categories },
-              categories: state.currentBook?.id === bookId ? categories : state.categories,
-            }));
-            
-            console.log(`📦 从本地加载 ${categories.length} 个分类`);
-          }
-          
-          // 同时从云端同步（后台更新）
-          const { data } = await supabase
+          // 🎯 优先从云端加载（确保数据最新）
+          const { data, error } = await supabase
             .from('categories')
             .select('*')
             .eq('book_id', bookId)
             .order('sort_order');
 
-          if (data) {
+          if (error) {
+            console.error('Fetch categories error:', error);
+            // 出错时回退到本地
+            const localCats = await db.categories.where('bookId').equals(bookId).toArray();
+            if (localCats.length > 0) {
+              const categories: Category[] = localCats.map(c => ({
+                id: c.id,
+                bookId: c.bookId,
+                name: c.name,
+                type: c.type as 'INCOME' | 'EXPENSE',
+                icon: c.icon,
+                color: c.color,
+                sortOrder: c.sortOrder,
+                isBuiltin: c.isBuiltin,
+              }));
+              
+              set(state => ({
+                categoriesMap: { ...state.categoriesMap, [bookId]: categories },
+                categories: state.currentBook?.id === bookId ? categories : state.categories,
+              }));
+            }
+            return;
+          }
+
+          if (data && data.length > 0) {
             const categories: Category[] = data.map((c: any) => ({
               id: c.id,
               bookId: c.book_id,
@@ -606,14 +669,66 @@ export const useBookStore = create<BookState>()(
 
             set(state => ({
               categoriesMap: { ...state.categoriesMap, [bookId]: categories },
-              // 同时更新当前categories（如果是当前账本）
               categories: state.currentBook?.id === bookId ? categories : state.categories,
             }));
             
-            console.log(`☁️ 从云端同步 ${categories.length} 个分类`);
+            console.log(`✅ 已加载 ${categories.length} 个分类`);
+          } else {
+            // 云端没有数据，使用默认分类
+            console.log('⚠️ 云端无分类，使用默认分类');
+            const defaultCategories = [
+              ...BUILTIN_EXPENSE_CATEGORIES.map((cat, i) => ({
+                id: generateUUID(),
+                bookId,
+                name: cat.name,
+                type: 'EXPENSE' as const,
+                icon: cat.icon,
+                color: cat.color,
+                sortOrder: i,
+                isBuiltin: true,
+              })),
+              ...BUILTIN_INCOME_CATEGORIES.map((cat, i) => ({
+                id: generateUUID(),
+                bookId,
+                name: cat.name,
+                type: 'INCOME' as const,
+                icon: cat.icon,
+                color: cat.color,
+                sortOrder: i,
+                isBuiltin: true,
+              })),
+            ];
+            
+            // 保存到云端
+            await supabase.from('categories').insert(
+              defaultCategories.map(c => ({
+                id: c.id,
+                book_id: c.bookId,
+                name: c.name,
+                type: c.type,
+                icon: c.icon,
+                color: c.color,
+                sort_order: c.sortOrder,
+                is_builtin: c.isBuiltin,
+              }))
+            );
+            
+            // 保存到本地
+            for (const cat of defaultCategories) {
+              await db.categories.put({ ...cat, synced: true, lastModified: Date.now() });
+            }
+            
+            set(state => ({
+              categoriesMap: { ...state.categoriesMap, [bookId]: defaultCategories },
+              categories: state.currentBook?.id === bookId ? defaultCategories : state.categories,
+            }));
+            
+            console.log(`✅ 已创建 ${defaultCategories.length} 个默认分类`);
           }
         } catch (error) {
           console.error('Fetch categories error:', error);
+        } finally {
+          set({ isLoading: false });
         }
       },
 

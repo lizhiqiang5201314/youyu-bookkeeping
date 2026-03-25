@@ -20,6 +20,7 @@ import { formatAmount, getDateRange, TIME_RANGES } from '@/utils/constants';
 import { Calendar, ChevronLeft, ChevronRight, Receipt } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Transaction } from '@/types';
+import { parseDate } from '@/services/db';
 
 export function StatisticsPage() {
   const { currentBook, categories } = useBookStore();
@@ -61,8 +62,9 @@ export function StatisticsPage() {
   const groupedTransactions = useMemo(() => {
     const groups: { [key: string]: Transaction[] } = {};
     
-    // 按创建时间倒序
+    // 按记账日期倒序，再按创建时间倒序，和首页保持一致
     const sortedTransactions = [...transactions].sort((a, b) => 
+      parseDate(b.recordDate).getTime() - parseDate(a.recordDate).getTime() ||
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
     

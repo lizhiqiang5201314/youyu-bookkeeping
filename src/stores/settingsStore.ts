@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { storage } from '@/services/storage';
+import { formatDate as formatLocalDate, parseDate } from '@/services/db';
 
 interface SettingsState {
   // 打卡成就
@@ -16,7 +17,7 @@ interface SettingsState {
 
 // 检查是否是昨天
 const isYesterday = (dateStr: string) => {
-  const date = new Date(dateStr);
+  const date = parseDate(dateStr);
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   return date.toDateString() === yesterday.toDateString();
@@ -24,7 +25,7 @@ const isYesterday = (dateStr: string) => {
 
 // 获取今天日期
 const getToday = () => {
-  return new Date().toISOString().split('T')[0];
+  return formatLocalDate(new Date());
 };
 
 export const useSettingsStore = create<SettingsState>()(

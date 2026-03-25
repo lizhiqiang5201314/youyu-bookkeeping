@@ -21,6 +21,7 @@ interface AuthState {
   updateUser: (user: Partial<User>) => Promise<void>;
   checkSession: () => Promise<void>;
   preloadUserData: (userId: string) => Promise<void>;
+  setUser: (user: User) => void; // 短信登录设置用户
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -280,6 +281,16 @@ export const useAuthStore = create<AuthState>()(
         } catch (error) {
           console.error('❌ 预加载用户数据失败:', error);
         }
+      },
+
+      // 短信登录设置用户
+      setUser: (user: User) => {
+        set({
+          user,
+          isAuthenticated: true,
+          isLoading: false,
+          error: null,
+        });
       },
     }),
     {

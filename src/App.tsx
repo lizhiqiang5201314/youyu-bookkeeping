@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useBookStore } from '@/stores/bookStore';
 import { LoginPage } from '@/pages/LoginPage';
@@ -8,8 +8,9 @@ import './App.css';
 
 function App() {
   const { isAuthenticated, isLoading, user } = useAuthStore();
-  const { fetchBooks, books } = useBookStore();
+  const { fetchBooks } = useBookStore();
   const [isReady, setIsReady] = useState(false);
+  const hasInitialized = useRef(false);
 
   useEffect(() => {
     setIsReady(true);
@@ -18,8 +19,11 @@ function App() {
   useEffect(() => {
     // 登录后加载云端数据
     const loadData = async () => {
-      if (isAuthenticated && user) {
+      if (isAuthenticated && user && !hasInitialized.current) {
+        hasInitialized.current = true;
         await fetchBooks(user.id);
+
+        const { books } = useBookStore.getState();
         // 没有账本时创建默认账本
         if (books.length === 0) {
           await useBookStore.getState().createBook('个人账本', 'PERSONAL', user.id);
@@ -27,7 +31,7 @@ function App() {
       }
     };
     loadData();
-  }, [isAuthenticated, user, fetchBooks, books.length]);
+  }, [isAuthenticated, user]); // 移除 fetchBooks 和 books 依赖
 
   if (!isReady || isLoading) {
     return (

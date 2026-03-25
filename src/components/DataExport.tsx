@@ -8,6 +8,7 @@ import { Download, FileSpreadsheet, Calendar, TrendingUp, TrendingDown, Wallet }
 import { formatDate, getDateRange } from '@/utils/constants';
 import type { Category } from '@/types';
 import { cn } from '@/lib/utils';
+import { formatDate as formatLocalDate } from '@/services/db';
 
 export function DataExport() {
   const { currentBook, categories } = useBookStore();
@@ -95,7 +96,7 @@ export function DataExport() {
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
-      link.setAttribute('download', `记账数据_${currentBook?.name}_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute('download', `记账数据_${currentBook?.name}_${formatLocalDate(new Date())}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

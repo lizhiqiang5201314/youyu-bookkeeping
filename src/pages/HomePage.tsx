@@ -25,9 +25,11 @@ import {
   Crown
 } from 'lucide-react';
 import { formatAmount, getDateRange } from '@/utils/constants';
+import { cleanOtherBookData } from '@/utils/cleanup';
 import type { Transaction, BookType, Category } from '@/types';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { parseDate } from '@/services/db';
 
 interface HomePageProps {
   onNavigate?: (page: string) => void;
@@ -60,11 +62,19 @@ export function HomePage(_props: HomePageProps = {}) {
     }
   }, [currentBook, books, setCurrentBook]);
 
-  // 当账本变化时，刷新交易数据
+  // 当账本变化时，先初始化清空，再加载数据
   useEffect(() => {
-    if (currentBook) {
-      fetchTransactions(currentBook.id);
-    }
+    const loadData = async () => {
+      if (currentBook) {
+        // 清理其他账本本地数据
+        await cleanOtherBookData(currentBook.id);
+        // 加载分类
+        await useBookStore.getState().fetchCategories(currentBook.id);
+        // 加载交易
+        await fetchTransactions(currentBook.id);
+      }
+    };
+    loadData();
   }, [currentBook?.id, fetchTransactions]);
 
   // 情侣/家庭账本实时订阅成员变化
@@ -110,7 +120,7 @@ export function HomePage(_props: HomePageProps = {}) {
     
     setIsDeleting(true);
     try {
-      await deleteTransaction(deletingTransaction.id);
+      await deleteTransaction(deletingTransaction.id, currentBook.id);
       
       setDeletingTransaction(null);
     } catch (error) {
@@ -123,8 +133,9 @@ export function HomePage(_props: HomePageProps = {}) {
 
   // 按日期分组交易记录
   const groupTransactionsByDate = (transactions: Transaction[]) => {
-    // 先按创建时间倒序排序（最新的在前）
+    // 先按记账日期倒序，再按创建时间倒序，避免刷新后顺序抖动
     const sortedTransactions = [...transactions].sort((a, b) => 
+      parseDate(b.recordDate).getTime() - parseDate(a.recordDate).getTime() ||
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
     
@@ -202,23 +213,7 @@ export function HomePage(_props: HomePageProps = {}) {
     
     const types: BookType[] = ['PERSONAL', 'COUPLE', 'FAMILY'];
     return types.map(type => {
-      // 本地检查
-      const userBooks = books.filter(b => b.createdBy === user.id && b.type === type);
-      const existingBook = userBooks.find(b => b.type === type);
-      
-      let disabled = false;
-      let message = '';
-      
-      if (existingBook) {
-        disabled = true;
-        message = `您已有一个${type === 'COUPLE' ? '情侣' : type === 'FAMILY' ? '家庭' : '个人'}账本了`;
-      } else if (type === 'COUPLE') {
-        // 简化检查，创建时再验证会员
-        disabled = false;
-      } else if (type === 'FAMILY') {
-        // 简化检查，创建时再验证会员
-        disabled = false;
-      }
+      const check = canCreateBookType(user.id, type);
       
       const labels: Record<BookType, string> = {
         PERSONAL: '个人账本',
@@ -234,8 +229,8 @@ export function HomePage(_props: HomePageProps = {}) {
         type,
         label: labels[type],
         icon: icons[type],
-        disabled,
-        message
+        disabled: !check.canCreate,
+        message: check.message
       };
     });
   };

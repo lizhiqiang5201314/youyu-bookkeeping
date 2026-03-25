@@ -6,11 +6,12 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { Transaction, TransactionType } from '@/types';
+import { formatDate as formatLocalDate, parseDate } from '@/services/db';
 import { Calendar, Loader2, ChevronLeft } from 'lucide-react';
 
 // 日期格式化工具
 const formatDateDisplay = (dateStr: string) => {
-  const date = new Date(dateStr);
+  const date = parseDate(dateStr);
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
@@ -31,7 +32,7 @@ const formatDateDisplay = (dateStr: string) => {
 
 // 滚轮式日期选择器
 function DatePicker({ value, onChange, onCancel }: { value: string; onChange: (date: string) => void; onCancel: () => void }) {
-  const date = new Date(value);
+  const date = parseDate(value);
   const [selectedYear, setSelectedYear] = useState(date.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(date.getMonth() + 1);
   const [selectedDay, setSelectedDay] = useState(date.getDate());
@@ -165,7 +166,7 @@ export function EditTransactionModal({ transaction, open, onClose }: EditTransac
   const [originalAmount, setOriginalAmount] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [note, setNote] = useState('');
-  const [recordDate, setRecordDate] = useState(new Date().toISOString().split('T')[0]);
+  const [recordDate, setRecordDate] = useState(() => formatLocalDate(new Date()));
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const categories = getCategoriesByType(type);
@@ -179,7 +180,7 @@ export function EditTransactionModal({ transaction, open, onClose }: EditTransac
       setOriginalAmount(amt);
       setSelectedCategoryId(transaction.categoryId);
       setNote(transaction.description || '');
-      setRecordDate(new Date(transaction.recordDate).toISOString().split('T')[0]);
+      setRecordDate(formatLocalDate(parseDate(transaction.recordDate)));
     }
   }, [transaction, open]);
 
@@ -257,8 +258,8 @@ export function EditTransactionModal({ transaction, open, onClose }: EditTransac
         amount: numAmount,
         type,
         description: note || undefined,
-        recordDate: new Date(recordDate).toISOString(),
-      });
+        recordDate,
+      }, transaction.bookId);
 
       
       onClose();
