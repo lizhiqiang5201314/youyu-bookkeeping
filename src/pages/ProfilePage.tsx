@@ -111,15 +111,21 @@ export function ProfilePage() {
   const [isAvatarLoading, setIsAvatarLoading] = useState(false);
 
   const createCroppedAvatar = async (file: File) => {
+    console.log('createCroppedAvatar called with:', file.name, file.type, file.size);
     const imageUrl = URL.createObjectURL(file);
 
     try {
       const img = await new Promise<HTMLImageElement>((resolve, reject) => {
         const image = new Image();
         image.onload = () => resolve(image);
-        image.onerror = reject;
+        image.onerror = (e) => {
+          console.error('图片加载失败:', e);
+          reject(new Error('图片加载失败'));
+        };
         image.src = imageUrl;
       });
+
+      console.log('图片加载成功:', img.width, 'x', img.height);
 
       const size = Math.min(img.width, img.height);
       const sx = (img.width - size) / 2;
@@ -130,14 +136,19 @@ export function ProfilePage() {
       canvas.height = 512;
       const ctx = canvas.getContext('2d');
 
-      if (!ctx) throw new Error('无法处理图片');
+      if (!ctx) throw new Error('无法创建 canvas 上下文');
 
       ctx.drawImage(img, sx, sy, size, size, 0, 0, 512, 512);
 
       return await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob((blob) => {
-          if (blob) resolve(blob);
-          else reject(new Error('头像裁剪失败'));
+          if (blob) {
+            console.log('Canvas toBlob 成功:', blob.size);
+            resolve(blob);
+          } else {
+            console.error('Canvas toBlob 返回 null');
+            reject(new Error('头像裁剪失败：canvas 转换失败'));
+          }
         }, 'image/jpeg', 0.9);
       });
     } finally {
@@ -171,8 +182,12 @@ export function ProfilePage() {
     setIsAvatarLoading(true);
 
     try {
+      console.log('开始裁剪头像:', avatarFile.name, avatarFile.size);
       const croppedBlob = await createCroppedAvatar(avatarFile);
+      console.log('裁剪成功, blob大小:', croppedBlob.size);
+
       const filePath = `avatars/${user.id}-${Date.now()}.jpg`;
+      console.log('开始上传:', filePath);
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
@@ -182,16 +197,21 @@ export function ProfilePage() {
         });
 
       if (uploadError) {
+        console.error('上传错误:', uploadError);
         throw uploadError;
       }
 
       const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+      console.log('获取URL成功:', data.publicUrl);
+
       await updateUser({ avatar: data.publicUrl });
       toast.success('头像更新成功');
       setAvatarPreview(null);
       setAvatarFile(null);
-    } catch (error) {
-      toast.error('上传失败');
+    } catch (error: any) {
+      console.error('头像上传失败:', error);
+      const errorMsg = error?.message || error?.error?.message || '上传失败';
+      toast.error(`上传失败: ${errorMsg}`);
     } finally {
       setIsAvatarLoading(false);
     }
