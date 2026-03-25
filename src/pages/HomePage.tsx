@@ -25,7 +25,6 @@ import {
   Crown
 } from 'lucide-react';
 import { formatAmount, getDateRange } from '@/utils/constants';
-import { cleanOtherBookData } from '@/utils/cleanup';
 import type { Transaction, BookType, Category } from '@/types';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -62,12 +61,10 @@ export function HomePage(_props: HomePageProps = {}) {
     }
   }, [currentBook, books, setCurrentBook]);
 
-  // 当账本变化时，先初始化清空，再加载数据
+  // 当账本变化时加载当前账本数据
   useEffect(() => {
     const loadData = async () => {
       if (currentBook) {
-        // 清理其他账本本地数据
-        await cleanOtherBookData(currentBook.id);
         // 加载分类
         await useBookStore.getState().fetchCategories(currentBook.id);
         // 加载交易
@@ -81,19 +78,7 @@ export function HomePage(_props: HomePageProps = {}) {
   useEffect(() => {
     if (currentBook && (currentBook.type === 'COUPLE' || currentBook.type === 'FAMILY') && user?.id) {
       // 启动实时订阅，传入 userId 而不是依赖 supabase.auth.getUser()
-      const unsubscribe = subscribeToBookChanges(currentBook.id, user.id);
-      
-      // 轮询作为失败兜底（30秒一次，而不是5秒）
-      const intervalId = setInterval(() => {
-        if (user?.id) {
-          useBookStore.getState().fetchBooks(user.id);
-        }
-      }, 30000); // 改为30秒
-      
-      return () => {
-        unsubscribe();
-        clearInterval(intervalId);
-      };
+      return subscribeToBookChanges(currentBook.id, user.id);
     }
   }, [currentBook?.id, currentBook?.type, subscribeToBookChanges, user?.id]);
 
