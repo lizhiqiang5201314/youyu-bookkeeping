@@ -36,7 +36,7 @@ import { formatDate as formatLocalDate } from '@/services/db';
 export function ProfilePage() {
   const { user, logout, updateUser } = useAuthStore();
   const { books, currentBook, setCurrentBook, createBook, canCreateBookType, generateInviteCode, joinBookByCode, isBookOwner, deleteBook, exitBook } = useBookStore();
-  const { subscriptions, fetchSubscriptions, getActiveSubscription } = useSubscriptionStore();
+  const { fetchSubscriptions, getActiveSubscription } = useSubscriptionStore();
   const { checkInStreak, totalCheckIns, longestStreak, lastCheckInDate, checkIn } = useSettingsStore();
 
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
