@@ -37,7 +37,7 @@ export const useAuthStore = create<AuthState>()(
 
       // 登录
       login: async (phone: string, password: string) => {
-        set({ isLoading: true, error: null });
+        set({ isLoading: true, error: null, isDataPreloaded: false });
         
         try {
           console.log('🔐 尝试登录:', phone);
@@ -60,21 +60,18 @@ export const useAuthStore = create<AuthState>()(
           }
 
           const user = data.user;
-          
+
+          // 登录成功后先同步依赖数据，再切换到已登录态
+          await useSubscriptionStore.getState().fetchSubscriptions(user.id);
+          await get().preloadUserData(user.id);
+
           set({
             user,
             isAuthenticated: true,
             isLoading: false,
             error: null,
-            isDataPreloaded: true, // 标记数据已预加载
           });
-          
-          // 登录成功后同步会员信息
-          await useSubscriptionStore.getState().fetchSubscriptions(user.id);
-          
-          // 预加载账本和分类到本地数据库
-          await get().preloadUserData(user.id);
-          
+
           console.log('🎉 登录成功，用户ID:', user.id);
           return true;
         } catch (error: any) {
@@ -86,7 +83,7 @@ export const useAuthStore = create<AuthState>()(
 
       // 注册
       register: async (phone: string, password: string) => {
-        set({ isLoading: true, error: null });
+        set({ isLoading: true, error: null, isDataPreloaded: false });
         
         try {
           console.log('📝 注册新用户:', phone);
@@ -109,21 +106,18 @@ export const useAuthStore = create<AuthState>()(
           }
 
           const user = data.user;
-          
+
+          // 注册成功后先同步依赖数据，再切换到已登录态
+          await useSubscriptionStore.getState().fetchSubscriptions(user.id);
+          await get().preloadUserData(user.id);
+
           set({
             user,
             isAuthenticated: true,
             isLoading: false,
             error: null,
-            isDataPreloaded: true, // 标记数据已预加载
           });
-          
-          // 注册成功后同步会员信息（初始为空）
-          await useSubscriptionStore.getState().fetchSubscriptions(user.id);
-          
-          // 新用户预加载数据（可能没有账本，但保持逻辑一致）
-          await get().preloadUserData(user.id);
-          
+
           console.log('🎉 注册成功，用户ID:', user.id);
           return true;
         } catch (error: any) {

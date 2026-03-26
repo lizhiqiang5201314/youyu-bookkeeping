@@ -335,6 +335,7 @@ serve(async (req) => {
       
       let userId = existingUser?.id
       let isNewUser = false
+      let hasPassword = Boolean(existingUser?.password_hash)
       
       // 7. 创建新用户
       if (!existingUser) {
@@ -363,6 +364,7 @@ serve(async (req) => {
         
         userId = newUser.id
         isNewUser = true
+        hasPassword = false
       }
       
       return new Response(JSON.stringify({ 
@@ -370,7 +372,8 @@ serve(async (req) => {
         message: isNewUser ? '注册成功' : '登录成功',
         userId: userId,
         phone: normalizedPhone,
-        isNewUser: isNewUser
+        isNewUser: isNewUser,
+        hasPassword
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
     

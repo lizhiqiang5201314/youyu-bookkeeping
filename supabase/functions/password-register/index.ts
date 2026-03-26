@@ -89,6 +89,7 @@ Deno.serve(async (req) => {
           phone: newUser.phone,
           nickname: newUser.nickname,
           avatar: newUser.avatar,
+          hasPassword: true,
           createdAt: newUser.created_at,
         }
       }),

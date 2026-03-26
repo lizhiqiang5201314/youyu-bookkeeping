@@ -8,45 +8,49 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { SUBSCRIPTION_PLANS } from '@/utils/constants';
-import { Crown, Users, Heart, Home, Sparkles, Zap, Loader2 } from 'lucide-react';
+import { Crown, Users, Heart, Home, Sparkles, Zap, Loader2, AlertCircle } from 'lucide-react';
 
 interface SubscriptionPlansProps {
   onClose: () => void;
 }
 
-// 微信支付配置（需要替换为真实的商户信息）
-const WECHAT_PAY_CONFIG = {
-  // 商户号
-  mchId: '',
-  // 应用ID
-  appId: '',
-  // API密钥（用于签名）
-  apiKey: '',
-  // 支付回调地址（必须是备案域名）
-  notifyUrl: 'https://your-domain.com/api/pay/callback',
-};
+// Supabase Edge Functions 基础URL
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-const isWechatPayConfigured = Boolean(
-  WECHAT_PAY_CONFIG.mchId &&
-  WECHAT_PAY_CONFIG.appId &&
-  WECHAT_PAY_CONFIG.apiKey &&
-  WECHAT_PAY_CONFIG.notifyUrl &&
-  !WECHAT_PAY_CONFIG.notifyUrl.includes('your-domain.com')
-);
+// Edge Functions 路径
+const CREATE_ORDER_URL = `${SUPABASE_URL}/functions/v1/create-pay-order`;
+const WECHAT_PAY_URL = `${SUPABASE_URL}/functions/v1/wechat-pay-h5`;
+const CHECK_ORDER_URL = `${SUPABASE_URL}/functions/v1/check-order`;
 
 export function SubscriptionPlans({ onClose }: SubscriptionPlansProps) {
   const { user } = useAuthStore();
-  const { createSubscription, isSubscriptionActive } = useSubscriptionStore();
+  const { createSubscription, isSubscriptionActive, fetchSubscriptions } = useSubscriptionStore();
   
   const [selectedType, setSelectedType] = useState<'COUPLE' | 'FAMILY'>('COUPLE');
   const [selectedPlan, setSelectedPlan] = useState<'MONTHLY' | 'YEARLY'>('YEARLY');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
 
   const planConfig = SUBSCRIPTION_PLANS[selectedType];
   const priceConfig = selectedPlan === 'MONTHLY' ? planConfig.monthly : planConfig.yearly;
   
   // 检查用户是否已有该类型会员
   const hasActiveSub = user ? isSubscriptionActive(user.id, selectedType) : false;
+
+  // 检查是否在支付返回页面
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const orderIdFromUrl = urlParams.get('orderId');
+    const paySuccess = urlParams.get('paySuccess');
+    
+    if (orderIdFromUrl && paySuccess === 'true') {
+      // 从支付页面返回，检查订单状态
+      handleCheckOrderStatus(orderIdFromUrl);
+      // 清理URL参数
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   // 创建支付订单
   const createPayOrder = async () => {
@@ -56,16 +60,17 @@ export function SubscriptionPlans({ onClose }: SubscriptionPlansProps) {
     }
     
     try {
-      // 1. 调用后端创建订单
-      // TODO: 替换为真实的后端API
-      const response = await fetch('/api/create-pay-order', {
+      const response = await fetch(CREATE_ORDER_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
         body: JSON.stringify({
           userId: user.id,
           type: selectedType,
           plan: selectedPlan,
-          amount: priceConfig.price * 100, // 转换为分
+          amount: Math.round(priceConfig.price * 100), // 转换为分
           description: `有鱼记账${selectedType === 'COUPLE' ? '情侣' : '家庭'}会员`,
         }),
       });
@@ -86,30 +91,29 @@ export function SubscriptionPlans({ onClose }: SubscriptionPlansProps) {
   };
 
   // 调用微信支付H5
-  const callWechatPay = async (payData: any) => {
+  const callWechatPay = async (payData: { orderId: string }) => {
     try {
-      // 微信支付H5需要后端生成支付链接
-      // 返回格式: { mweb_url: 'https://wx.tenpay.com/cgi-bin/mmpayweb-bin/checkmweb...' }
-      
-      const response = await fetch('/api/wechat-pay-h5', {
+      const response = await fetch(WECHAT_PAY_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
         body: JSON.stringify({
           orderId: payData.orderId,
-          amount: payData.amount,
-          description: payData.description,
-          // 用户支付成功后返回的页面
-          redirectUrl: `${window.location.origin}/pay-success?orderId=${payData.orderId}`,
+          amount: Math.round(priceConfig.price * 100),
+          description: `有鱼记账${selectedType === 'COUPLE' ? '情侣' : '家庭'}会员`,
+          redirectUrl: `${window.location.origin}/pay-success?orderId=${payData.orderId}&paySuccess=true`,
         }),
       });
       
       const data = await response.json();
       
-      if (data.mweb_url) {
+      if (data.success && data.mweb_url) {
         // 跳转到微信支付页面
         window.location.href = data.mweb_url;
       } else {
-        toast.error('调起支付失败');
+        toast.error(data.message || '调起支付失败');
       }
     } catch (error) {
       console.error('Wechat pay error:', error);
@@ -117,25 +121,42 @@ export function SubscriptionPlans({ onClose }: SubscriptionPlansProps) {
     }
   };
 
-  // 检查订单状态（支付成功后调用）
-  const checkOrderStatus = async (orderId: string) => {
+  // 检查订单状态
+  const handleCheckOrderStatus = async (orderId: string) => {
+    if (!user) return;
+    
+    setIsCheckingStatus(true);
+    
     try {
-      const response = await fetch(`/api/check-order?orderId=${orderId}`);
+      const response = await fetch(`${CHECK_ORDER_URL}?orderId=${orderId}`, {
+        headers: {
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+      });
+      
       const data = await response.json();
       
-      if (data.status === 'PAID') {
+      if (data.success && data.order?.status === 'PAID') {
         // 支付成功，创建会员
-        if (user) {
-          await createSubscription(user.id, selectedType, selectedPlan);
-          
-          onClose();
-        }
-        return true;
+        await createSubscription(user.id, selectedType, selectedPlan);
+        
+        toast.success('支付成功！会员已开通', {
+          duration: 3000,
+        });
+        
+        // 刷新会员数据
+        await fetchSubscriptions(user.id);
+        
+        // 关闭弹窗
+        onClose();
+      } else {
+        toast.error('支付尚未完成，请稍后再试');
       }
-      return false;
     } catch (error) {
       console.error('Check order error:', error);
-      return false;
+      toast.error('查询订单状态失败');
+    } finally {
+      setIsCheckingStatus(false);
     }
   };
 
@@ -147,11 +168,6 @@ export function SubscriptionPlans({ onClose }: SubscriptionPlansProps) {
     
     if (hasActiveSub) {
       toast.error(`您已开通${selectedType === 'COUPLE' ? '情侣' : '家庭'}会员`);
-      return;
-    }
-
-    if (!isWechatPayConfigured) {
-      toast.error('支付功能尚未配置完成，请先完善微信支付参数和后端接口');
       return;
     }
 
@@ -169,19 +185,7 @@ export function SubscriptionPlans({ onClose }: SubscriptionPlansProps) {
     } finally {
       setIsProcessing(false);
     }
-    
-    // 注意：H5支付会跳转页面，以下代码可能不会执行
-    // 支付结果通过回调或返回页面处理
   };
-
-  // 如果在支付返回页面，检查订单状态
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const orderIdFromUrl = urlParams.get('orderId');
-    if (orderIdFromUrl) {
-      checkOrderStatus(orderIdFromUrl);
-    }
-  }, []);
 
   const features = [
     { icon: selectedType === 'COUPLE' ? Heart : Users, text: `支持${planConfig.maxMembers}人共享记账` },
@@ -268,7 +272,7 @@ export function SubscriptionPlans({ onClose }: SubscriptionPlansProps) {
       {/* 支付按钮 */}
       <Button
         onClick={handleSubscribe}
-        disabled={isProcessing || hasActiveSub}
+        disabled={isProcessing || hasActiveSub || isCheckingStatus}
         className={cn(
           'w-full h-12 text-lg font-medium',
           selectedType === 'COUPLE'
@@ -281,6 +285,11 @@ export function SubscriptionPlans({ onClose }: SubscriptionPlansProps) {
             <Loader2 className="w-5 h-5 mr-2 animate-spin" />
             正在调起支付...
           </>
+        ) : isCheckingStatus ? (
+          <>
+            <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+            查询支付状态...
+          </>
         ) : hasActiveSub ? (
           '您已是会员'
         ) : (
@@ -289,16 +298,17 @@ export function SubscriptionPlans({ onClose }: SubscriptionPlansProps) {
       </Button>
 
       {/* 配置提示 */}
-      {!isWechatPayConfigured && (
-        <div className="p-3 bg-yellow-50 rounded-lg text-xs text-yellow-700">
-          <p className="font-medium mb-1">⚠️ 支付配置待完善</p>
-          <p>请在 SubscriptionPlans.tsx 中填入微信支付商户信息：</p>
-          <ul className="mt-1 list-disc list-inside">
-            <li>商户号 (mchId)</li>
-            <li>应用ID (appId)</li>
-            <li>API密钥 (apiKey)</li>
-            <li>回调地址 (notifyUrl)</li>
-          </ul>
+      {(!SUPABASE_URL || !SUPABASE_ANON_KEY) && (
+        <div className="p-3 bg-yellow-50 rounded-lg text-xs text-yellow-700 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium mb-1">⚠️ 环境变量未配置</p>
+            <p>请检查 .env 文件是否包含：</p>
+            <ul className="mt-1 list-disc list-inside">
+              <li>VITE_SUPABASE_URL</li>
+              <li>VITE_SUPABASE_ANON_KEY</li>
+            </ul>
+          </div>
         </div>
       )}
 

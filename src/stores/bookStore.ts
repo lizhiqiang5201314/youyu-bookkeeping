@@ -17,6 +17,7 @@ interface BookState {
   categoriesMap: Record<string, Category[]>; // 按账本ID存储分类
   isLoading: boolean;
   isSyncing: boolean;
+  resetState: () => void;
   
   // Actions
   fetchBooks: (userId: string) => Promise<void>;
@@ -91,6 +92,16 @@ export const useBookStore = create<BookState>()(
       categoriesMap: {},
       isLoading: false,
       isSyncing: false,
+      resetState: () => {
+        set({
+          books: [],
+          currentBook: null,
+          categories: [],
+          categoriesMap: {},
+          isLoading: false,
+          isSyncing: false,
+        });
+      },
 
       // 检查是否可以创建某类型账本
       canCreateBookType: (userId, type) => {

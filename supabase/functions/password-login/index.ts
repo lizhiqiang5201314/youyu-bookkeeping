@@ -50,6 +50,13 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (!user.password_hash) {
+      return new Response(
+        JSON.stringify({ error: '该账号尚未设置密码，请先使用验证码登录' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // 使用 Deno 的 bcrypt 验证密码
     const bcrypt = await import('https://deno.land/x/bcrypt@v0.4.1/mod.ts');
     const isValid = await bcrypt.compare(password, user.password_hash);
@@ -69,6 +76,7 @@ Deno.serve(async (req) => {
           phone: user.phone,
           nickname: user.nickname || `用户${user.phone.slice(-4)}`,
           avatar: user.avatar,
+          hasPassword: true,
           createdAt: user.created_at,
         }
       }),

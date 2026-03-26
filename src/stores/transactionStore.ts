@@ -27,6 +27,7 @@ interface TransactionState {
 
   // Actions
   init: () => void; // 🧹 初始化清空
+  resetState: () => void;
   subscribeToTransactionChanges: (bookId: string) => (() => void);
   fetchTransactions: (bookId: string) => Promise<void>;
   addTransaction: (data: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>, userId: string) => Promise<Transaction | null>;
@@ -54,6 +55,15 @@ export const useTransactionStore = create<TransactionState>()(
       // 🧹 初始化时清空所有数据
       init: () => {
         set({ transactionsMap: {} });
+      },
+
+      resetState: () => {
+        set({
+          transactionsMap: {},
+          isLoading: false,
+          isSyncingByBook: {},
+          selectedDateRange: getDateRange('month'),
+        });
       },
 
       subscribeToTransactionChanges: (bookId: string) => {

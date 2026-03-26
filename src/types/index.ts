@@ -30,6 +30,7 @@ export interface User {
   email?: string;
   nickname?: string;
   avatar?: string;
+  hasPassword?: boolean;
   createdAt: string;
 }
 

@@ -26,6 +26,7 @@ import {
   CalendarCheck,
   LogOut,
   ChevronRight,
+  LockKeyhole,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -35,7 +36,7 @@ import { formatDate as formatLocalDate } from '@/services/db';
 import { supabase } from '@/services/supabase';
 
 export function ProfilePage() {
-  const { user, logout, updateUser } = useAuthStore();
+  const { user, logout, updateUser, setUser } = useAuthStore();
   const { books, currentBook, setCurrentBook, createBook, canCreateBookType, generateInviteCode, joinBookByCode, isBookOwner, deleteBook, exitBook } = useBookStore();
   const { fetchSubscriptions, getActiveSubscription } = useSubscriptionStore();
   const { checkInStreak, totalCheckIns, longestStreak, lastCheckInDate, checkIn } = useSettingsStore();
@@ -47,6 +48,7 @@ export function ProfilePage() {
   const [isCreateBookOpen, setIsCreateBookOpen] = useState(false);
   const [isJoinBookOpen, setIsJoinBookOpen] = useState(false);
   const [isCheckInOpen, setIsCheckInOpen] = useState(false);
+  const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
   const [nickname, setNickname] = useState(user?.nickname || '');
   const [newBookName, setNewBookName] = useState('');
   const [selectedBookType, setSelectedBookType] = useState<BookType>('PERSONAL');
@@ -64,8 +66,14 @@ export function ProfilePage() {
   >(null);
 
   const [isCheckingIn, setIsCheckingIn] = useState(false);
+  const [isCheckingPasswordStatus, setIsCheckingPasswordStatus] = useState(false);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
 
   // 用户进入个人页时刷新一次账本和会员数据
   useEffect(() => {
@@ -81,9 +89,48 @@ export function ProfilePage() {
     useBookStore.getState().fetchBooks(user.id);
   }, [user?.id, isBooksOpen]);
 
+  useEffect(() => {
+    if (!user || user.hasPassword !== undefined) return;
+
+    let cancelled = false;
+    const loadPasswordStatus = async () => {
+      setIsCheckingPasswordStatus(true);
+      try {
+        const response = await fetch(`${edgeFunctionUrl}/password-status`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: user.id,
+            phone: user.phone,
+          }),
+        });
+
+        const data = await response.json().catch(() => null);
+        if (!response.ok || cancelled) return;
+
+        setUser({ ...user, hasPassword: Boolean(data?.hasPassword) });
+      } catch (error) {
+        console.error('Load password status error:', error);
+      } finally {
+        if (!cancelled) {
+          setIsCheckingPasswordStatus(false);
+        }
+      }
+    };
+
+    void loadPasswordStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [edgeFunctionUrl, setUser, user]);
+
   const activeSubscription = user
     ? getActiveSubscription(user.id)
     : null;
+  const hasPassword = Boolean(user?.hasPassword);
 
   // 格式化会员到期日期
   const formatExpiryDate = (dateStr: string) => {
@@ -219,6 +266,67 @@ export function ProfilePage() {
 
   const handleLogout = () => {
     setPendingAction({ type: 'logout' });
+  };
+
+  const resetPasswordForm = () => {
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+  };
+
+  const handleOpenPasswordDialog = () => {
+    resetPasswordForm();
+    setIsPasswordDialogOpen(true);
+  };
+
+  const handleSavePassword = async () => {
+    if (!user) return;
+
+    if (hasPassword && !currentPassword) {
+      toast.error('请输入当前密码');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      toast.error('新密码长度不能少于6位');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast.error('两次输入的新密码不一致');
+      return;
+    }
+
+    setIsSavingPassword(true);
+
+    try {
+      const response = await fetch(`${edgeFunctionUrl}/set-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          phone: user.phone,
+          currentPassword: currentPassword || undefined,
+          newPassword,
+        }),
+      });
+
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || '设置密码失败');
+      }
+
+      setUser({ ...user, hasPassword: true });
+      toast.success(hasPassword ? '密码修改成功' : '密码设置成功');
+      setIsPasswordDialogOpen(false);
+      resetPasswordForm();
+    } catch (error: any) {
+      toast.error(error.message || '设置密码失败');
+    } finally {
+      setIsSavingPassword(false);
+    }
   };
 
   // 处理创建新账本
@@ -417,6 +525,14 @@ export function ProfilePage() {
       onClick: () => setIsBooksOpen(true)
     },
     {
+      icon: LockKeyhole,
+      iconColor: 'text-indigo-500',
+      bgColor: 'bg-indigo-100',
+      label: hasPassword ? '修改密码' : '设置密码',
+      value: isCheckingPasswordStatus ? '检测中' : hasPassword ? '已设置' : '未设置',
+      onClick: handleOpenPasswordDialog
+    },
+    {
       icon: Download,
       iconColor: 'text-green-500',
       bgColor: 'bg-green-100',
@@ -590,6 +706,63 @@ export function ProfilePage() {
           <SubscriptionPlans
             onClose={() => setIsSubscriptionOpen(false)}
           />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isPasswordDialogOpen}
+        onOpenChange={(open) => {
+          setIsPasswordDialogOpen(open);
+          if (!open) {
+            resetPasswordForm();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{hasPassword ? '修改登录密码' : '设置登录密码'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-500">
+              已绑定手机号：{user?.phone}
+            </div>
+            {hasPassword && (
+              <div className="space-y-2">
+                <Label>当前密码</Label>
+                <Input
+                  type="password"
+                  placeholder="请输入当前密码"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>{hasPassword ? '新密码' : '登录密码'}</Label>
+              <Input
+                type="password"
+                placeholder="请输入至少6位密码"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>确认密码</Label>
+              <Input
+                type="password"
+                placeholder="请再次输入密码"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+            </div>
+            <Button
+              onClick={handleSavePassword}
+              className="w-full bg-teal-500 hover:bg-teal-600"
+              disabled={isSavingPassword}
+            >
+              {isSavingPassword ? '保存中...' : hasPassword ? '确认修改' : '确认设置'}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

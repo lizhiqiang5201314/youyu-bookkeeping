@@ -244,8 +244,10 @@ const PrivacyPolicyContent = () => (
 );
 
 export function LoginPage() {
+  const [loginMode, setLoginMode] = useState<'sms' | 'password'>('sms');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
+  const [password, setPassword] = useState('');
   const [countdown, setCountdown] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -253,7 +255,7 @@ export function LoginPage() {
   const [showAgreement, setShowAgreement] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const { setUser } = useAuthStore();
+  const { setUser, login } = useAuthStore();
 
   useEffect(() => {
     return () => {
@@ -374,17 +376,18 @@ export function LoginPage() {
         throw new Error(data?.error || '验证失败');
       }
 
-      setUser({
-        id: data.userId,
-        phone: data.phone,
-        nickname: `用户${data.phone.slice(-4)}`,
-        createdAt: new Date().toISOString(),
-      });
-
       await Promise.all([
         useSubscriptionStore.getState().fetchSubscriptions(data.userId),
         useAuthStore.getState().preloadUserData(data.userId),
       ]);
+
+      setUser({
+        id: data.userId,
+        phone: data.phone,
+        nickname: `用户${data.phone.slice(-4)}`,
+        hasPassword: Boolean(data.hasPassword),
+        createdAt: new Date().toISOString(),
+      });
       
       toast.success(data.isNewUser ? '🎉 欢迎加入有鱼记账！' : '✨ 登录成功！');
     } catch (error: any) {
@@ -404,6 +407,43 @@ export function LoginPage() {
   const handleCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/\D/g, '').slice(0, 6);
     setCode(value);
+  };
+
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPassword(e.target.value);
+  };
+
+  const handlePasswordLogin = async () => {
+    if (!isValidPhone(phone)) {
+      toast.error('请输入正确的手机号');
+      return;
+    }
+
+    if (!password || password.length < 6) {
+      toast.error('请输入至少6位密码');
+      return;
+    }
+
+    if (!agreed) {
+      toast.error('请阅读并同意用户协议和隐私政策');
+      return;
+    }
+
+    if (isLoading) return;
+
+    setIsLoading(true);
+
+    try {
+      const success = await login(phone.trim(), password);
+      if (!success) {
+        toast.error(useAuthStore.getState().error || '登录失败');
+        return;
+      }
+
+      toast.success('✨ 登录成功！');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // 协议弹窗组件
@@ -455,7 +495,30 @@ export function LoginPage() {
 
         {/* 登录表单 */}
         <div className="flex-1 px-6">
-          <p className="text-gray-500 text-sm mb-6">使用手机号验证码登录</p>
+          <div className="inline-flex bg-gray-100 rounded-full p-1 mb-4">
+            <button
+              onClick={() => setLoginMode('sms')}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                loginMode === 'sms' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500'
+              }`}
+            >
+              验证码登录
+            </button>
+            <button
+              onClick={() => setLoginMode('password')}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                loginMode === 'password' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500'
+              }`}
+            >
+              密码登录
+            </button>
+          </div>
+
+          <p className="text-gray-500 text-sm mb-6">
+            {loginMode === 'sms'
+              ? '默认使用手机号验证码登录，首次登录会自动注册并绑定手机号'
+              : '已设置密码的账号可直接登录，未设置密码请先验证码登录后前往我的页面设置'}
+          </p>
 
           <div className="space-y-4">
             {/* 手机号输入 */}
@@ -472,30 +535,42 @@ export function LoginPage() {
               />
             </div>
 
-            {/* 验证码输入 */}
-            <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center gap-3">
-              <input
-                type="text"
-                inputMode="numeric"
-                placeholder="请输入验证码"
-                value={code}
-                onChange={handleCodeChange}
-                maxLength={6}
-                disabled={isLoading}
-                className="flex-1 bg-transparent text-base outline-none placeholder:text-gray-400"
-              />
-              <button
-                onClick={handleSendCode}
-                disabled={countdown > 0 || isSending || !isValidPhone(phone) || isLoading}
-                className={`text-sm font-medium whitespace-nowrap transition-colors ${
-                  countdown > 0 || isSending || !isValidPhone(phone)
-                    ? 'text-gray-400'
-                    : 'text-teal-500'
-                }`}
-              >
-                {isSending ? '发送中...' : countdown > 0 ? `${countdown}s` : '获取验证码'}
-              </button>
-            </div>
+            {loginMode === 'sms' ? (
+              <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center gap-3">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="请输入验证码"
+                  value={code}
+                  onChange={handleCodeChange}
+                  maxLength={6}
+                  disabled={isLoading}
+                  className="flex-1 bg-transparent text-base outline-none placeholder:text-gray-400"
+                />
+                <button
+                  onClick={handleSendCode}
+                  disabled={countdown > 0 || isSending || !isValidPhone(phone) || isLoading}
+                  className={`text-sm font-medium whitespace-nowrap transition-colors ${
+                    countdown > 0 || isSending || !isValidPhone(phone)
+                      ? 'text-gray-400'
+                      : 'text-teal-500'
+                  }`}
+                >
+                  {isSending ? '发送中...' : countdown > 0 ? `${countdown}s` : '获取验证码'}
+                </button>
+              </div>
+            ) : (
+              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                <input
+                  type="password"
+                  placeholder="请输入密码"
+                  value={password}
+                  onChange={handlePasswordChange}
+                  disabled={isLoading}
+                  className="w-full bg-transparent text-base outline-none placeholder:text-gray-400"
+                />
+              </div>
+            )}
           </div>
 
           {/* 用户协议 */}
@@ -526,15 +601,23 @@ export function LoginPage() {
 
           {/* 登录按钮 */}
           <button
-            onClick={handleLogin}
-            disabled={isLoading || !isValidPhone(phone) || code.length !== 6 || !agreed}
+            onClick={loginMode === 'sms' ? handleLogin : handlePasswordLogin}
+            disabled={
+              isLoading ||
+              !isValidPhone(phone) ||
+              !agreed ||
+              (loginMode === 'sms' ? code.length !== 6 : password.length < 6)
+            }
             className={`w-full mt-8 py-4 rounded-full text-lg font-medium transition-all ${
-              isLoading || !isValidPhone(phone) || code.length !== 6 || !agreed
+              isLoading ||
+              !isValidPhone(phone) ||
+              !agreed ||
+              (loginMode === 'sms' ? code.length !== 6 : password.length < 6)
                 ? 'bg-gray-200 text-gray-400'
                 : 'bg-gradient-to-r from-teal-400 to-cyan-500 text-white active:scale-98 shadow-lg'
             }`}
           >
-            {isLoading ? '登录中...' : '登录'}
+            {isLoading ? '登录中...' : loginMode === 'sms' ? '验证码登录 / 注册' : '密码登录'}
           </button>
         </div>
 
