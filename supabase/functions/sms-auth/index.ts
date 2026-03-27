@@ -5,12 +5,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1'
 const CONFIG = {
   // 验证码有效期（分钟）
   CODE_EXPIRE_MINUTES: 5,
-  // 发送间隔（分钟）- 3分钟内不能重复发送
-  SEND_INTERVAL_MINUTES: 3,
-  // 每日最大发送次数
-  MAX_DAILY_SEND: 10,
-  // IP每日最大发送次数
-  MAX_DAILY_SEND_PER_IP: 20,
   // 最大错误尝试次数
   MAX_ATTEMPTS: 3,
   // 验证码长度
@@ -112,84 +106,12 @@ serve(async (req) => {
     // ==================== 发送验证码 ====================
     if (action === 'send') {
       const now = new Date()
-      
-      // 1. 检查发送间隔（3分钟内不能重复发送）
-      const { data: recentSend, error: recentError } = await supabase
-        .from('sms_send_log')
-        .select('created_at')
-        .eq('phone', normalizedPhone)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      
-      if (recentError) {
-        console.error('查询最近发送记录失败:', recentError)
-      }
-      
-      if (recentSend?.created_at) {
-        const lastSendTime = new Date(recentSend.created_at)
-        const minutesSinceLastSend = (now.getTime() - lastSendTime.getTime()) / (1000 * 60)
-        
-        if (minutesSinceLastSend < CONFIG.SEND_INTERVAL_MINUTES) {
-          const waitMinutes = Math.ceil(CONFIG.SEND_INTERVAL_MINUTES - minutesSinceLastSend)
-          return new Response(JSON.stringify({ 
-            error: `发送太频繁，请${waitMinutes}分钟后再试`,
-            code: 'RATE_LIMIT',
-            waitSeconds: Math.ceil((CONFIG.SEND_INTERVAL_MINUTES - minutesSinceLastSend) * 60)
-          }), {
-            status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          })
-        }
-      }
-      
-      // 2. 检查今日发送次数（手机号）
-      const today = now.toISOString().split('T')[0]
-      const { data: phoneSendCount, error: phoneCountError } = await supabase
-        .from('sms_send_log')
-        .select('id', { count: 'exact' })
-        .eq('phone', normalizedPhone)
-        .gte('created_at', `${today}T00:00:00`)
-      
-      if (phoneCountError) {
-        console.error('查询手机号发送次数失败:', phoneCountError)
-      }
-      
-      const phoneCount = phoneSendCount?.length || 0
-      if (phoneCount >= CONFIG.MAX_DAILY_SEND) {
-        return new Response(JSON.stringify({ 
-          error: `今日发送次数已达上限(${CONFIG.MAX_DAILY_SEND}次)，请明天再试`,
-          code: 'DAILY_LIMIT'
-        }), {
-          status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        })
-      }
-      
-      // 3. 检查今日发送次数（IP限制）
-      const { data: ipSendCount, error: ipCountError } = await supabase
-        .from('sms_send_log')
-        .select('id', { count: 'exact' })
-        .eq('ip_address', clientIp)
-        .gte('created_at', `${today}T00:00:00`)
-      
-      if (ipCountError) {
-        console.error('查询IP发送次数失败:', ipCountError)
-      }
-      
-      const ipCount = ipSendCount?.length || 0
-      if (ipCount >= CONFIG.MAX_DAILY_SEND_PER_IP) {
-        return new Response(JSON.stringify({ 
-          error: '该网络环境今日发送次数已达上限，请明天再试',
-          code: 'IP_LIMIT'
-        }), {
-          status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        })
-      }
-      
-      // 4. 生成验证码
+
+      // 1. 生成验证码
       const newCode = generateCode()
       const expireAt = new Date(now.getTime() + CONFIG.CODE_EXPIRE_MINUTES * 60000).toISOString()
       
-      // 5. 保存验证码
+      // 2. 保存验证码
       const { error: upsertError } = await supabase
         .from('sms_verification_codes')
         .upsert({
@@ -208,7 +130,7 @@ serve(async (req) => {
         })
       }
       
-      // 6. 记录发送日志（包含IP）
+      // 3. 记录发送日志（包含IP）
       const { error: logError } = await supabase
         .from('sms_send_log')
         .insert({
