@@ -487,7 +487,7 @@ export function ProfilePage() {
         setUser({ ...latestUser, hasPassword: true });
       }
       setHasSyncedPasswordStatus(true);
-      toast.success(hasPassword ? '密码修改成功' : '密码设置成功');
+      toast.success('账户安全已更新');
       setIsPasswordDialogOpen(false);
       resetPasswordForm();
     } catch (error: any) {
@@ -500,9 +500,9 @@ export function ProfilePage() {
         normalized.includes('cors') ||
         normalized.includes('networkerror')
       ) {
-        toast.error('设置密码服务暂时不可用，请稍后重试');
+        toast.error('账户安全服务暂时不可用，请稍后重试');
       } else {
-        toast.error(rawMessage || '设置密码失败');
+        toast.error(rawMessage || '账户安全设置失败');
       }
     } finally {
       setIsSavingPassword(false);
@@ -708,15 +708,11 @@ export function ProfilePage() {
       icon: LockKeyhole,
       iconColor: 'text-indigo-500',
       bgColor: 'bg-indigo-100',
-      label: hasPassword
-        ? '修改密码'
-        : hasPasswordStatusKnown
-        ? '设置密码'
-        : '密码设置',
+      label: '账户安全',
       value: hasPasswordStatusKnown
         ? hasPassword
-          ? '已设置，修改需输入验证码'
-          : '未设置'
+          ? '已开启密码登录'
+          : '未开启密码登录'
         : isCheckingPasswordStatus
         ? '检测中'
         : '待同步',
@@ -910,7 +906,7 @@ export function ProfilePage() {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{hasPassword ? '修改密码' : '设置密码'}</DialogTitle>
+            <DialogTitle>账户安全</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-500">
@@ -918,12 +914,12 @@ export function ProfilePage() {
             </div>
             <div className="rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-600">
               {hasPassword
-                ? '当前账号已设置登录密码，修改密码需先获取短信验证码。'
-                : '当前账号还未设置登录密码，本次操作为首次设置密码。'}
+                ? '已开启密码登录，如需更新登录密码，请先完成短信验证。'
+                : '暂未开启密码登录，设置后可直接使用手机号和密码登录。'}
             </div>
             {hasPassword && (
               <div className="space-y-2">
-                <Label>验证码</Label>
+                <Label>短信验证码</Label>
                 <div className="flex items-center gap-3">
                   <Input
                     type="text"
@@ -946,7 +942,7 @@ export function ProfilePage() {
               </div>
             )}
             <div className="space-y-2">
-              <Label>{hasPassword ? '新密码' : '登录密码'}</Label>
+              <Label>{hasPassword ? '新登录密码' : '登录密码'}</Label>
               <Input
                 type="password"
                 placeholder="请输入至少6位密码"
@@ -968,7 +964,7 @@ export function ProfilePage() {
               className="w-full bg-teal-500 hover:bg-teal-600"
               disabled={isSavingPassword}
             >
-              {isSavingPassword ? '保存中...' : hasPassword ? '确认修改' : '确认设置'}
+              {isSavingPassword ? '保存中...' : '保存安全设置'}
             </Button>
           </div>
         </DialogContent>
