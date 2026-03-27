@@ -275,9 +275,12 @@ export const useBookStore = create<BookState>()(
           }));
           await db.books.bulkPut(booksToPut);
 
+          const nextCurrentBook = getNextCurrentBook(get().currentBook, books);
+
           set({
             books,
-            currentBook: getNextCurrentBook(get().currentBook, books),
+            currentBook: nextCurrentBook,
+            categories: nextCurrentBook ? (get().categoriesMap[nextCurrentBook.id] || []) : [],
           });
 
           // 为所有账本批量加载分类
@@ -326,8 +329,13 @@ export const useBookStore = create<BookState>()(
               for (const bookId of bookIds) {
                 categoriesMap[bookId] = categoriesByBook[bookId] || [];
               }
-              set({ categoriesMap });
+              set({
+                categoriesMap,
+                categories: nextCurrentBook ? (categoriesMap[nextCurrentBook.id] || []) : [],
+              });
             }
+          } else {
+            set({ categoriesMap: {}, categories: [] });
           }
         } catch (error) {
           console.error('Fetch books error:', error);
@@ -449,8 +457,16 @@ export const useBookStore = create<BookState>()(
       },
 
       setCurrentBook: (book) => {
-        set({ currentBook: book });
-        if (book) get().fetchCategories(book.id);
+        const cachedCategories = book ? (get().categoriesMap[book.id] || []) : [];
+
+        set({
+          currentBook: book,
+          categories: cachedCategories,
+        });
+
+        if (book && cachedCategories.length === 0) {
+          void get().fetchCategories(book.id);
+        }
       },
 
       // 删除账本

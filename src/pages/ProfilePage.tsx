@@ -177,8 +177,8 @@ export function ProfilePage() {
   const activeSubscription = user
     ? getActiveSubscription(user.id)
     : null;
-  const hasPassword = Boolean(user?.hasPassword);
-  const hasPasswordStatusKnown = user?.hasPassword !== undefined || hasSyncedPasswordStatus;
+  const hasPasswordStatusKnown = hasSyncedPasswordStatus;
+  const hasPassword = hasPasswordStatusKnown && Boolean(user?.hasPassword);
 
   // 格式化会员到期日期
   const formatExpiryDate = (dateStr: string) => {

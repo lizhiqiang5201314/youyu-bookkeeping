@@ -192,16 +192,15 @@ export const useAuthStore = create<AuthState>()(
           set({ isDataPreloaded: false });
         }
 
-        void Promise.allSettled([
-          useSubscriptionStore.getState().fetchSubscriptions(userId),
-          get().preloadUserData(userId),
-        ]).then((results) => {
-          for (const result of results) {
-            if (result.status === 'rejected') {
-              console.error('❌ 登录后初始化失败:', result.reason);
+        void useSubscriptionStore.getState().fetchSubscriptions(userId)
+          .catch((error) => {
+            console.error('❌ 登录后初始化失败:', error);
+          })
+          .finally(() => {
+            if (get().user?.id === userId) {
+              set({ isDataPreloaded: true });
             }
-          }
-        });
+          });
       },
 
       updateUser: async (userData) => {

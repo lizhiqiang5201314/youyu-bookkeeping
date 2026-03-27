@@ -65,8 +65,6 @@ export function HomePage(_props: HomePageProps = {}) {
   useEffect(() => {
     const loadData = async () => {
       if (currentBook) {
-        // 加载分类
-        await useBookStore.getState().fetchCategories(currentBook.id);
         // 加载交易
         await fetchTransactions(currentBook.id);
       }
