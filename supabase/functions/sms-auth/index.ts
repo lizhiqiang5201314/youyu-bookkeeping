@@ -66,6 +66,10 @@ function isSmsConfigured() {
   )
 }
 
+function shouldUseDebugMode() {
+  return SMS_DEBUG_MODE || !isSmsConfigured()
+}
+
 async function sendVerificationSms(phone: string, code: string) {
   const config = getSmsConfig()
 
@@ -213,18 +217,8 @@ serve(async (req) => {
       }
 
       try {
-        if (isSmsConfigured()) {
+        if (!shouldUseDebugMode()) {
           await sendVerificationSms(normalizedPhone, newCode)
-        } else if (!SMS_DEBUG_MODE) {
-          console.error('阿里云短信服务未配置完整')
-          await supabase
-            .from('sms_verification_codes')
-            .update({ used: true, expire_at: now.toISOString() })
-            .eq('phone', normalizedPhone)
-
-          return new Response(JSON.stringify({ error: '短信服务未配置，请联系管理员' }), {
-            status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          })
         }
       } catch (error) {
         console.error('发送阿里云短信失败:', error)
@@ -253,14 +247,14 @@ serve(async (req) => {
         console.error('记录发送日志失败:', logError)
       }
       
-      if (SMS_DEBUG_MODE) {
-        console.log(`[调试模式] 验证码 for ${normalizedPhone}: ${newCode}`)
+      if (shouldUseDebugMode()) {
+        console.log(`[测试模式] 验证码 for ${normalizedPhone}: ${newCode}`)
       }
       
       return new Response(JSON.stringify({
         success: true, 
         message: '验证码已发送',
-        code: SMS_DEBUG_MODE ? newCode : undefined,
+        code: shouldUseDebugMode() ? newCode : undefined,
         expireMinutes: CONFIG.CODE_EXPIRE_MINUTES
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
