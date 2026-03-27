@@ -236,11 +236,19 @@ export function HomePage(_props: HomePageProps = {}) {
         <div className="px-4 pt-12 pb-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-                <span className="text-white text-lg">
-                  {user?.nickname?.[0] || user?.phone?.slice(-1) || 'U'}
-                </span>
-              </div>
+              {user?.avatar ? (
+                <img
+                  src={user.avatar}
+                  alt="avatar"
+                  className="w-10 h-10 rounded-full object-cover border border-white/20"
+                />
+              ) : (
+                <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                  <span className="text-white text-lg">
+                    {user?.nickname?.[0] || user?.phone?.slice(-1) || 'U'}
+                  </span>
+                </div>
+              )}
               <div>
                 <p className="text-white/80 text-sm">下午好</p>
                 <p className="text-white font-medium">{user?.nickname || '用户'}</p>
