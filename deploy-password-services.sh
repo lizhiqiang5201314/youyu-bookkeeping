@@ -34,7 +34,7 @@ echo "已链接项目: $PROJECT_REF"
 echo "开始部署密码相关 Edge Functions..."
 for fn in "${FUNCTIONS[@]}"; do
   echo "  - 部署 $fn"
-  run_supabase functions deploy "$fn" --project-ref "$PROJECT_REF" --use-api
+  run_supabase functions deploy "$fn" --project-ref "$PROJECT_REF" --use-api --no-verify-jwt
 done
 
 if [[ -n "${SUPABASE_DB_PASSWORD:-}" ]]; then
