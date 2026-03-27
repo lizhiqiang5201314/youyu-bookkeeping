@@ -327,13 +327,17 @@ export function ProfilePage() {
         const normalized = rawError.toLowerCase();
 
         if (
+          rawError.includes('请输入当前密码') ||
           rawError.includes('当前密码错误') ||
           rawError.includes('当前密码不正确') ||
           rawError.includes('密码错误') ||
           normalized.includes('invalid password') ||
           normalized.includes('wrong password')
         ) {
-          throw new Error('当前密码错误，请重新输入');
+          if (!hasPassword) {
+            setUser({ ...user, hasPassword: true });
+          }
+          throw new Error(rawError.includes('请输入当前密码') ? '当前账号已设置密码，请先输入当前密码再修改。' : '当前密码错误，请重新输入');
         }
 
         if (

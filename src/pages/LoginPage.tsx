@@ -281,26 +281,6 @@ export function LoginPage() {
 
     setIsSending(true);
 
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-    }
-
-    setCountdown(60);
-    countdownTimerRef.current = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          if (countdownTimerRef.current) {
-            clearInterval(countdownTimerRef.current);
-            countdownTimerRef.current = null;
-          }
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    toast.success('验证码已发送，请注意查收');
-    
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       
@@ -308,37 +288,52 @@ export function LoginPage() {
         throw new Error('系统配置错误');
       }
 
-      fetch(`${supabaseUrl}/functions/v1/sms-auth`, {
+      toast.info('验证码发送中，请稍候...');
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/sms-auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'send', phone: phone.trim() }),
-      })
-        .then(async (response) => {
-          const data = await response.json().catch(() => null);
+      });
 
-          if (!response.ok) {
-            throw new Error(data?.error || '发送失败');
-          }
+      const data = await response.json().catch(() => null);
 
-          if (data?.code) {
-            toast.success(`开发模式：验证码 ${data.code}`, { duration: 6000 });
+      if (!response.ok) {
+        throw new Error(data?.error || '发送失败');
+      }
+
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+      }
+
+      setCountdown(60);
+      countdownTimerRef.current = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            if (countdownTimerRef.current) {
+              clearInterval(countdownTimerRef.current);
+              countdownTimerRef.current = null;
+            }
+            return 0;
           }
-        })
-        .catch((error: any) => {
-          console.error('发送验证码失败:', error);
-          toast.error(error?.message || '验证码发送可能延迟，请稍后重试');
-        })
-        .finally(() => {
-          setIsSending(false);
+          return prev - 1;
         });
+      }, 1000);
+
+      if (data?.code) {
+        toast.success(`开发模式：验证码 ${data.code}`, { duration: 6000 });
+      } else {
+        toast.success('验证码已发送，请注意查收');
+      }
     } catch (error: any) {
       if (countdownTimerRef.current) {
         clearInterval(countdownTimerRef.current);
         countdownTimerRef.current = null;
       }
       setCountdown(0);
+      toast.error(error?.message || '验证码发送失败，请稍后重试');
+    } finally {
       setIsSending(false);
-      toast.error(error.message || '发送失败');
     }
   };
 
