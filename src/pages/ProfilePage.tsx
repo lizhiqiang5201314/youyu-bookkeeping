@@ -115,10 +115,6 @@ export function ProfilePage() {
         setUser({ ...user, hasPassword: Boolean(data?.hasPassword) });
       } catch (error) {
         console.error('Load password status error:', error);
-        if (!cancelled) {
-          // 查询失败时默认按“未设置密码”处理，避免刚进入页面就出现误导性的失败状态
-          setUser({ ...user, hasPassword: false });
-        }
       } finally {
         if (!cancelled) {
           setIsCheckingPasswordStatus(false);
@@ -136,6 +132,7 @@ export function ProfilePage() {
   const activeSubscription = user
     ? getActiveSubscription(user.id)
     : null;
+  const hasPasswordStatusKnown = user?.hasPassword !== undefined;
   const hasPassword = Boolean(user?.hasPassword);
 
   // 格式化会员到期日期
@@ -281,6 +278,11 @@ export function ProfilePage() {
   };
 
   const handleOpenPasswordDialog = () => {
+    if (isCheckingPasswordStatus || !hasPasswordStatusKnown) {
+      toast.info('正在同步密码状态，请稍后再试');
+      return;
+    }
+
     resetPasswordForm();
     setIsPasswordDialogOpen(true);
   };
@@ -567,8 +569,18 @@ export function ProfilePage() {
       icon: LockKeyhole,
       iconColor: 'text-indigo-500',
       bgColor: 'bg-indigo-100',
-      label: hasPassword ? '修改密码' : '设置密码',
-      value: isCheckingPasswordStatus ? '检测中' : hasPassword ? '已设置' : '未设置',
+      label: !hasPasswordStatusKnown || isCheckingPasswordStatus
+        ? '登录密码'
+        : hasPassword
+        ? '修改密码'
+        : '设置密码',
+      value: isCheckingPasswordStatus
+        ? '检测中'
+        : !hasPasswordStatusKnown
+        ? '待同步'
+        : hasPassword
+        ? '已设置，修改需输入当前密码'
+        : '未设置',
       onClick: handleOpenPasswordDialog
     },
     {
@@ -764,6 +776,11 @@ export function ProfilePage() {
           <div className="space-y-4 py-2">
             <div className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-500">
               已绑定手机号：{user?.phone}
+            </div>
+            <div className="rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-600">
+              {hasPassword
+                ? '当前账号已设置登录密码，本次操作为修改密码，需要先输入当前密码。'
+                : '当前账号还未设置登录密码，本次操作为首次设置密码。'}
             </div>
             {hasPassword && (
               <div className="space-y-2">
