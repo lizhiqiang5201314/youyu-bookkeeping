@@ -52,10 +52,30 @@ export const useAuthStore = create<AuthState>()(
           });
 
           const data = await response.json();
+          const rawError = String(data?.error || '');
 
           if (!response.ok) {
-            console.error('❌ 登录失败:', data.error);
-            set({ isLoading: false, error: data.error || '登录失败' });
+            console.error('❌ 登录失败:', rawError);
+
+            let friendlyError = '登录失败，请稍后重试';
+            const normalized = rawError.toLowerCase();
+
+            if (
+              rawError.includes('密码错误') ||
+              normalized.includes('invalid password') ||
+              normalized.includes('wrong password')
+            ) {
+              friendlyError = '密码错误，请重新输入';
+            } else if (
+              rawError.includes('用户不存在') ||
+              rawError.includes('未注册') ||
+              normalized.includes('user not found') ||
+              normalized.includes('not found')
+            ) {
+              friendlyError = '用户不存在，请先注册';
+            }
+
+            set({ isLoading: false, error: friendlyError });
             return false;
           }
 

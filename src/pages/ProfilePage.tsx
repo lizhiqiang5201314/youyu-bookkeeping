@@ -108,11 +108,17 @@ export function ProfilePage() {
         });
 
         const data = await response.json().catch(() => null);
-        if (!response.ok || cancelled) return;
+        if (!response.ok || cancelled) {
+          return;
+        }
 
         setUser({ ...user, hasPassword: Boolean(data?.hasPassword) });
       } catch (error) {
         console.error('Load password status error:', error);
+        if (!cancelled) {
+          // 查询失败时默认按“未设置密码”处理，避免刚进入页面就出现误导性的失败状态
+          setUser({ ...user, hasPassword: false });
+        }
       } finally {
         if (!cancelled) {
           setIsCheckingPasswordStatus(false);
@@ -315,7 +321,27 @@ export function ProfilePage() {
 
       const data = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(data?.error || '设置密码失败');
+        const rawError = String(data?.error || '');
+        const normalized = rawError.toLowerCase();
+
+        if (
+          rawError.includes('当前密码错误') ||
+          rawError.includes('密码错误') ||
+          normalized.includes('invalid password') ||
+          normalized.includes('wrong password')
+        ) {
+          throw new Error('当前密码错误，请重新输入');
+        }
+
+        if (
+          rawError.includes('用户不存在') ||
+          normalized.includes('user not found') ||
+          normalized.includes('not found')
+        ) {
+          throw new Error('用户信息异常，请重新登录后再试');
+        }
+
+        throw new Error(rawError || '设置密码失败，请稍后重试');
       }
 
       setUser({ ...user, hasPassword: true });
