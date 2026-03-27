@@ -24,6 +24,7 @@ jobs:
       run: |
         rm -rf node_modules
         npm ci --registry=https://registry.npmmirror.com
+        npm install @rollup/rollup-linux-x64-gnu@4.55.1 --no-save --registry=https://registry.npmmirror.com
         
     - name: Check secrets
       run: |
