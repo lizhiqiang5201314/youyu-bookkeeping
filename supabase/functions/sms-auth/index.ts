@@ -1,21 +1,103 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1'
+import * as Dysmsapi20170525 from 'npm:@alicloud/dysmsapi20170525'
 
 // ==================== 配置常量 ====================
 const CONFIG = {
   // 验证码有效期（分钟）
-  CODE_EXPIRE_MINUTES: 5,
+  CODE_EXPIRE_MINUTES: Number(Deno.env.get('SMS_CODE_EXPIRE_MINUTES') || '5'),
   // 最大错误尝试次数
   MAX_ATTEMPTS: 3,
   // 验证码长度
   CODE_LENGTH: 6,
 }
 
+const SMS_REGION_ID = Deno.env.get('SMS_REGION_ID') || 'cn-hangzhou'
+const SMS_ENDPOINT = Deno.env.get('SMS_ENDPOINT') || ''
+const SMS_SIGN_NAME = Deno.env.get('SMS_SIGN_NAME') || ''
+const SMS_TEMPLATE_CODE = Deno.env.get('SMS_TEMPLATE_CODE') || ''
+const SMS_TEMPLATE_PARAM_KEY = Deno.env.get('SMS_TEMPLATE_PARAM_KEY') || 'code'
+const SMS_DEBUG_MODE = Deno.env.get('SMS_DEBUG_MODE') === 'true'
+
 // ==================== 工具函数 ====================
 
 // 生成6位随机验证码
 function generateCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString()
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  if (typeof error === 'object' && error !== null) {
+    const maybeError = error as { message?: unknown; data?: { Message?: unknown } }
+    if (typeof maybeError.message === 'string' && maybeError.message) {
+      return maybeError.message
+    }
+    if (typeof maybeError.data?.Message === 'string' && maybeError.data.Message) {
+      return maybeError.data.Message
+    }
+  }
+
+  return fallback
+}
+
+function getSmsConfig() {
+  return {
+    accessKeyId: Deno.env.get('ALIBABA_CLOUD_ACCESS_KEY_ID') || '',
+    accessKeySecret: Deno.env.get('ALIBABA_CLOUD_ACCESS_KEY_SECRET') || '',
+    signName: SMS_SIGN_NAME,
+    templateCode: SMS_TEMPLATE_CODE,
+    templateParamKey: SMS_TEMPLATE_PARAM_KEY,
+    regionId: SMS_REGION_ID,
+    endpoint: SMS_ENDPOINT,
+  }
+}
+
+function isSmsConfigured() {
+  const config = getSmsConfig()
+  return Boolean(
+    config.accessKeyId &&
+    config.accessKeySecret &&
+    config.signName &&
+    config.templateCode
+  )
+}
+
+async function sendVerificationSms(phone: string, code: string) {
+  const config = getSmsConfig()
+
+  const client = new Dysmsapi20170525.default({
+    accessKeyId: config.accessKeyId,
+    accessKeySecret: config.accessKeySecret,
+    regionId: config.regionId,
+    endpoint: config.endpoint || undefined,
+  })
+
+  const templateParam = JSON.stringify({
+    [config.templateParamKey]: code,
+  })
+
+  const request = new Dysmsapi20170525.SendSmsRequest({
+    phoneNumbers: phone,
+    signName: config.signName,
+    templateCode: config.templateCode,
+    templateParam,
+  })
+
+  const response = await client.sendSms(request)
+  const responseCode = response.body?.code || ''
+
+  if (responseCode !== 'OK') {
+    throw new Error(response.body?.message || '阿里云短信发送失败')
+  }
+
+  return {
+    bizId: response.body?.bizId || null,
+    requestId: response.body?.requestId || null,
+  }
 }
 
 // 标准化手机号
@@ -129,6 +211,34 @@ serve(async (req) => {
           status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         })
       }
+
+      try {
+        if (isSmsConfigured()) {
+          await sendVerificationSms(normalizedPhone, newCode)
+        } else if (!SMS_DEBUG_MODE) {
+          console.error('阿里云短信服务未配置完整')
+          await supabase
+            .from('sms_verification_codes')
+            .update({ used: true, expire_at: now.toISOString() })
+            .eq('phone', normalizedPhone)
+
+          return new Response(JSON.stringify({ error: '短信服务未配置，请联系管理员' }), {
+            status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          })
+        }
+      } catch (error) {
+        console.error('发送阿里云短信失败:', error)
+        await supabase
+          .from('sms_verification_codes')
+          .update({ used: true, expire_at: now.toISOString() })
+          .eq('phone', normalizedPhone)
+
+        return new Response(JSON.stringify({
+          error: getErrorMessage(error, '验证码发送失败，请稍后重试'),
+        }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
       
       // 3. 记录发送日志（包含IP）
       const { error: logError } = await supabase
@@ -143,13 +253,14 @@ serve(async (req) => {
         console.error('记录发送日志失败:', logError)
       }
       
-      // 开发模式返回验证码
-      console.log(`[开发模式] 验证码 for ${normalizedPhone}: ${newCode}`)
+      if (SMS_DEBUG_MODE) {
+        console.log(`[调试模式] 验证码 for ${normalizedPhone}: ${newCode}`)
+      }
       
-      return new Response(JSON.stringify({ 
+      return new Response(JSON.stringify({
         success: true, 
         message: '验证码已发送',
-        code: newCode, // 开发模式显示
+        code: SMS_DEBUG_MODE ? newCode : undefined,
         expireMinutes: CONFIG.CODE_EXPIRE_MINUTES
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
