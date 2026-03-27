@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
-import { useSubscriptionStore } from '@/stores/subscriptionStore';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { ArrowLeft } from 'lucide-react';
+
+const getErrorMessage = (error: unknown, fallback: string) => (
+  error instanceof Error && error.message ? error.message : fallback
+);
 
 // 用户协议内容
 const UserAgreementContent = () => (
@@ -255,7 +258,7 @@ export function LoginPage() {
   const [showAgreement, setShowAgreement] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const { setUser, login } = useAuthStore();
+  const { setUser, login, primeUserSession } = useAuthStore();
 
   useEffect(() => {
     return () => {
@@ -341,9 +344,9 @@ export function LoginPage() {
         if (data?.code) {
           toast.success(`开发模式：验证码 ${data.code}`, { duration: 6000 });
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         clearCountdown();
-        toast.error(error?.message || '验证码发送失败，请稍后重试');
+        toast.error(getErrorMessage(error, '验证码发送失败，请稍后重试'));
       } finally {
         setIsSending(false);
       }
@@ -393,11 +396,6 @@ export function LoginPage() {
         throw new Error(data?.error || '验证失败');
       }
 
-      await Promise.all([
-        useSubscriptionStore.getState().fetchSubscriptions(data.userId),
-        useAuthStore.getState().preloadUserData(data.userId),
-      ]);
-
       setUser({
         id: data.userId,
         phone: data.phone,
@@ -405,10 +403,11 @@ export function LoginPage() {
         hasPassword: Boolean(data.hasPassword),
         createdAt: new Date().toISOString(),
       });
+      primeUserSession(data.userId);
       
       toast.success(data.isNewUser ? '🎉 欢迎加入有鱼记账！' : '✨ 登录成功！');
-    } catch (error: any) {
-      toast.error(error.message || '登录失败');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, '登录失败'));
     } finally {
       setIsLoading(false);
     }

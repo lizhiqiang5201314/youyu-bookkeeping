@@ -177,8 +177,8 @@ export function ProfilePage() {
   const activeSubscription = user
     ? getActiveSubscription(user.id)
     : null;
-  const hasPasswordStatusKnown = hasSyncedPasswordStatus && user?.hasPassword !== undefined;
   const hasPassword = Boolean(user?.hasPassword);
+  const hasPasswordStatusKnown = user?.hasPassword !== undefined || hasSyncedPasswordStatus;
 
   // 格式化会员到期日期
   const formatExpiryDate = (dateStr: string) => {
@@ -708,18 +708,18 @@ export function ProfilePage() {
       icon: LockKeyhole,
       iconColor: 'text-indigo-500',
       bgColor: 'bg-indigo-100',
-      label: !hasPasswordStatusKnown || isCheckingPasswordStatus
-        ? '登录密码'
-        : hasPassword
+      label: hasPassword
         ? '修改密码'
-        : '设置密码',
-      value: isCheckingPasswordStatus
+        : hasPasswordStatusKnown
+        ? '设置密码'
+        : '密码设置',
+      value: hasPasswordStatusKnown
+        ? hasPassword
+          ? '已设置，修改需输入验证码'
+          : '未设置'
+        : isCheckingPasswordStatus
         ? '检测中'
-        : !hasPasswordStatusKnown
-        ? '待同步'
-        : hasPassword
-        ? '已设置，修改需输入验证码'
-        : '未设置',
+        : '待同步',
       onClick: handleOpenPasswordDialog
     },
     {

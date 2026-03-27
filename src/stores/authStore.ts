@@ -4,10 +4,33 @@ import { storage } from '@/services/storage';
 import { supabase } from '@/services/supabase';
 import { db } from '@/services/db';
 import { useSubscriptionStore } from './subscriptionStore';
-import type { User, Category } from '@/types';
+import type { User, Category, BookType, TransactionType } from '@/types';
 
 // Edge Function 基础 URL
 const EDGE_FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
+
+type RemoteBookRecord = {
+  id: string;
+  name: string;
+  type: BookType;
+  created_at: string;
+  created_by: string;
+};
+
+type RemoteCategoryRecord = {
+  id: string;
+  book_id: string;
+  name: string;
+  type: TransactionType;
+  icon: string;
+  color: string;
+  sort_order: number;
+  is_builtin: boolean;
+};
+
+const getErrorMessage = (error: unknown, fallback: string) => (
+  error instanceof Error && error.message ? error.message : fallback
+);
 
 interface AuthState {
   user: User | null;
@@ -19,6 +42,7 @@ interface AuthState {
   // Actions
   login: (phone: string, password: string) => Promise<boolean>;
   register: (phone: string, password: string) => Promise<boolean>;
+  primeUserSession: (userId: string) => void;
   logout: () => void;
   updateUser: (user: Partial<User>) => Promise<void>;
   checkSession: () => Promise<void>;
@@ -82,22 +106,19 @@ export const useAuthStore = create<AuthState>()(
 
           const user = data.user;
 
-          // 登录成功后先同步依赖数据，再切换到已登录态
-          await useSubscriptionStore.getState().fetchSubscriptions(user.id);
-          await get().preloadUserData(user.id);
-
           set({
             user,
             isAuthenticated: true,
             isLoading: false,
             error: null,
           });
+          get().primeUserSession(user.id);
 
           console.log('🎉 登录成功，用户ID:', user.id);
           return true;
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error('❌ 登录异常:', error);
-          const message = String(error?.message || '');
+          const message = getErrorMessage(error, '登录失败');
           const normalized = message.toLowerCase();
           const friendlyError = (
             message.includes('Failed to fetch') ||
@@ -138,22 +159,19 @@ export const useAuthStore = create<AuthState>()(
 
           const user = data.user;
 
-          // 注册成功后先同步依赖数据，再切换到已登录态
-          await useSubscriptionStore.getState().fetchSubscriptions(user.id);
-          await get().preloadUserData(user.id);
-
           set({
             user,
             isAuthenticated: true,
             isLoading: false,
             error: null,
           });
+          get().primeUserSession(user.id);
 
           console.log('🎉 注册成功，用户ID:', user.id);
           return true;
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error('❌ 注册异常:', error);
-          set({ isLoading: false, error: error?.message || '注册失败' });
+          set({ isLoading: false, error: getErrorMessage(error, '注册失败') });
           return false;
         }
       },
@@ -164,6 +182,25 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           error: null,
           isDataPreloaded: false,
+        });
+      },
+
+      primeUserSession: (userId: string) => {
+        if (!userId) return;
+
+        if (get().user?.id === userId) {
+          set({ isDataPreloaded: false });
+        }
+
+        void Promise.allSettled([
+          useSubscriptionStore.getState().fetchSubscriptions(userId),
+          get().preloadUserData(userId),
+        ]).then((results) => {
+          for (const result of results) {
+            if (result.status === 'rejected') {
+              console.error('❌ 登录后初始化失败:', result.reason);
+            }
+          }
         });
       },
 
@@ -204,7 +241,7 @@ export const useAuthStore = create<AuthState>()(
             supabase.from('book_members').select('book_id').eq('user_id', userId)
           ]);
 
-          let allBooks: any[] = createdBooks.data || [];
+          let allBooks = (createdBooks.data || []) as RemoteBookRecord[];
           
           if (memberBooks.data?.length) {
             const bookIds = memberBooks.data.map(m => m.book_id);
@@ -247,11 +284,11 @@ export const useAuthStore = create<AuthState>()(
               .order('sort_order');
             
             if (cats) {
-              const categories: Category[] = cats.map((c: any) => ({
+              const categories: Category[] = (cats as RemoteCategoryRecord[]).map((c) => ({
                 id: c.id,
                 bookId: c.book_id,
                 name: c.name,
-                type: c.type as 'INCOME' | 'EXPENSE',
+                type: c.type,
                 icon: c.icon,
                 color: c.color,
                 sortOrder: c.sort_order,
@@ -273,8 +310,10 @@ export const useAuthStore = create<AuthState>()(
           
           console.log(`🏷️ 已加载 ${allCategories.length} 个分类到本地数据库`);
           
-          set({ isDataPreloaded: true });
-          console.log('✅ 用户数据预加载完成');
+          if (get().user?.id === userId) {
+            set({ isDataPreloaded: true });
+            console.log('✅ 用户数据预加载完成');
+          }
         } catch (error) {
           console.error('❌ 预加载用户数据失败:', error);
         }
@@ -282,12 +321,13 @@ export const useAuthStore = create<AuthState>()(
 
       // 短信登录设置用户
       setUser: (user: User) => {
-        set({
+        set((state) => ({
           user,
           isAuthenticated: true,
           isLoading: false,
           error: null,
-        });
+          isDataPreloaded: state.user?.id === user.id ? state.isDataPreloaded : false,
+        }));
       },
     }),
     {
