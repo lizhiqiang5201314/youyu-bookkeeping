@@ -349,7 +349,19 @@ export function ProfilePage() {
       setIsPasswordDialogOpen(false);
       resetPasswordForm();
     } catch (error: any) {
-      toast.error(error.message || '设置密码失败');
+      const rawMessage = String(error?.message || '');
+      const normalized = rawMessage.toLowerCase();
+
+      if (
+        rawMessage.includes('Failed to fetch') ||
+        normalized.includes('failed to fetch') ||
+        normalized.includes('cors') ||
+        normalized.includes('networkerror')
+      ) {
+        toast.error('设置密码服务暂时不可用，请稍后重试');
+      } else {
+        toast.error(rawMessage || '设置密码失败');
+      }
     } finally {
       setIsSavingPassword(false);
     }
