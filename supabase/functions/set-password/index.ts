@@ -32,9 +32,21 @@ Deno.serve(async (req) => {
 
     const normalizePhone = (value: string) => value.trim().replace(/\s/g, '').replace(/^\+?86/, '');
 
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || Deno.env.get('SB_URL') || '';
+    const supabaseServiceRoleKey =
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SERVICE_ROLE_KEY') || '';
+
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+      console.error('Supabase admin env is missing for set-password');
+      return new Response(
+        JSON.stringify({ error: '设置密码服务配置错误，请稍后重试' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      supabaseUrl,
+      supabaseServiceRoleKey,
       {
         auth: {
           autoRefreshToken: false,
