@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import * as bcrypt from 'npm:bcryptjs';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -70,8 +71,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    const bcrypt = await import('https://deno.land/x/bcrypt@v0.4.1/mod.ts');
-
     let verificationRecordId: string | null = null;
 
     if (user.password_hash) {
@@ -142,7 +141,7 @@ Deno.serve(async (req) => {
 
         verificationRecordId = verifyData.id;
       } else if (currentPassword) {
-        const isValid = await bcrypt.compare(currentPassword, user.password_hash);
+        const isValid = bcrypt.compareSync(currentPassword, user.password_hash);
         if (!isValid) {
           return new Response(
             JSON.stringify({ error: '当前密码错误' }),
@@ -157,7 +156,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const passwordHash = bcrypt.hashSync(newPassword, 10);
 
     const { error: updateError } = await supabase
       .from('app_users')

@@ -2,6 +2,7 @@
 // 处理密码验证，不将 password_hash 暴露到前端
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import * as bcrypt from 'npm:bcryptjs';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -72,9 +73,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 使用 Deno 的 bcrypt 验证密码
-    const bcrypt = await import('https://deno.land/x/bcrypt@v0.4.1/mod.ts');
-    const isValid = await bcrypt.compare(password, user.password_hash);
+    const isValid = bcrypt.compareSync(password, user.password_hash);
 
     if (!isValid) {
       return new Response(
