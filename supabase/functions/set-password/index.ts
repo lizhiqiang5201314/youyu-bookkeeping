@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { userId, phone, newPassword, currentPassword } = await req.json();
+    const { userId, phone, newPassword, verificationCode, currentPassword } = await req.json();
 
     if (!userId || !phone || !newPassword) {
       return new Response(
@@ -30,6 +30,8 @@ Deno.serve(async (req) => {
       );
     }
 
+    const normalizePhone = (value: string) => value.trim().replace(/\s/g, '').replace(/^\+?86/, '');
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
@@ -41,13 +43,15 @@ Deno.serve(async (req) => {
       }
     );
 
+    const normalizedPhone = normalizePhone(phone);
+
     const { data: user, error } = await supabase
       .from('app_users')
       .select('id, phone, password_hash')
       .eq('id', userId)
       .single();
 
-    if (error || !user || user.phone !== phone) {
+    if (error || !user || normalizePhone(user.phone) !== normalizedPhone) {
       return new Response(
         JSON.stringify({ error: '用户不存在' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -56,19 +60,87 @@ Deno.serve(async (req) => {
 
     const bcrypt = await import('https://deno.land/x/bcrypt@v0.4.1/mod.ts');
 
-    if (user.password_hash) {
-      if (!currentPassword) {
-        return new Response(
-          JSON.stringify({ error: '请输入当前密码' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+    let verificationRecordId: string | null = null;
 
-      const isValid = await bcrypt.compare(currentPassword, user.password_hash);
-      if (!isValid) {
+    if (user.password_hash) {
+      if (verificationCode) {
+        const trimmedCode = String(verificationCode).trim();
+
+        if (!/^\d{6}$/.test(trimmedCode)) {
+          return new Response(
+            JSON.stringify({ error: '验证码必须是6位数字' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const { data: verifyData, error: verifyError } = await supabase
+          .from('sms_verification_codes')
+          .select('id, code, attempt_count, expire_at, used')
+          .eq('phone', normalizedPhone)
+          .eq('used', false)
+          .gte('expire_at', new Date().toISOString())
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (verifyError) {
+          console.error('查询验证码失败:', verifyError);
+          return new Response(
+            JSON.stringify({ error: '验证服务暂时不可用' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (!verifyData) {
+          return new Response(
+            JSON.stringify({ error: '验证码已过期，请重新获取' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const currentAttempts = Number(verifyData.attempt_count || 0);
+        const maxAttempts = 3;
+
+        if (currentAttempts >= maxAttempts) {
+          await supabase
+            .from('sms_verification_codes')
+            .update({ used: true })
+            .eq('id', verifyData.id);
+
+          return new Response(
+            JSON.stringify({ error: `错误次数过多(${maxAttempts}次)，请重新获取验证码` }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (verifyData.code !== trimmedCode) {
+          const newAttempts = currentAttempts + 1;
+          const remainingAttempts = maxAttempts - newAttempts;
+
+          await supabase
+            .from('sms_verification_codes')
+            .update({ attempt_count: newAttempts })
+            .eq('id', verifyData.id);
+
+          return new Response(
+            JSON.stringify({ error: `验证码错误，还剩${Math.max(remainingAttempts, 0)}次机会` }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        verificationRecordId = verifyData.id;
+      } else if (currentPassword) {
+        const isValid = await bcrypt.compare(currentPassword, user.password_hash);
+        if (!isValid) {
+          return new Response(
+            JSON.stringify({ error: '当前密码错误' }),
+            { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      } else {
         return new Response(
-          JSON.stringify({ error: '当前密码错误' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ error: '请输入验证码' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
     }
@@ -86,6 +158,17 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: '设置密码失败，请稍后重试' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    if (verificationRecordId) {
+      const { error: markUsedError } = await supabase
+        .from('sms_verification_codes')
+        .update({ used: true })
+        .eq('id', verificationRecordId);
+
+      if (markUsedError) {
+        console.error('标记验证码使用状态失败:', markUsedError);
+      }
     }
 
     return new Response(

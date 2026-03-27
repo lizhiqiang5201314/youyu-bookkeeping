@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useBookStore } from '@/stores/bookStore';
 import { useSubscriptionStore } from '@/stores/subscriptionStore';
@@ -67,12 +67,17 @@ export function ProfilePage() {
 
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [isCheckingPasswordStatus, setIsCheckingPasswordStatus] = useState(false);
+  const [hasSyncedPasswordStatus, setHasSyncedPasswordStatus] = useState(false);
   const [isSavingPassword, setIsSavingPassword] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
+  const [passwordCode, setPasswordCode] = useState('');
+  const [passwordCodeCountdown, setPasswordCodeCountdown] = useState(0);
+  const [isSendingPasswordCode, setIsSendingPasswordCode] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const passwordCodeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const passwordStatusRequestRef = useRef(0);
   const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
 
   // 用户进入个人页时刷新一次账本和会员数据
@@ -89,50 +94,90 @@ export function ProfilePage() {
     useBookStore.getState().fetchBooks(user.id);
   }, [user?.id, isBooksOpen]);
 
-  useEffect(() => {
-    if (!user || user.hasPassword !== undefined) return;
+  const clearPasswordCodeCountdown = () => {
+    if (passwordCodeTimerRef.current) {
+      clearInterval(passwordCodeTimerRef.current);
+      passwordCodeTimerRef.current = null;
+    }
+  };
 
-    let cancelled = false;
-    const loadPasswordStatus = async () => {
-      setIsCheckingPasswordStatus(true);
-      try {
-        const response = await fetch(`${edgeFunctionUrl}/password-status`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            userId: user.id,
-            phone: user.phone,
-          }),
-        });
-
-        const data = await response.json().catch(() => null);
-        if (!response.ok || cancelled) {
-          return;
+  const startPasswordCodeCountdown = (seconds = 60) => {
+    clearPasswordCodeCountdown();
+    setPasswordCodeCountdown(seconds);
+    passwordCodeTimerRef.current = setInterval(() => {
+      setPasswordCodeCountdown((prev) => {
+        if (prev <= 1) {
+          clearPasswordCodeCountdown();
+          return 0;
         }
+        return prev - 1;
+      });
+    }, 1000);
+  };
 
-        setUser({ ...user, hasPassword: Boolean(data?.hasPassword) });
-      } catch (error) {
-        console.error('Load password status error:', error);
-      } finally {
-        if (!cancelled) {
-          setIsCheckingPasswordStatus(false);
-        }
+  const syncPasswordStatus = async () => {
+    if (!user?.id || !user.phone) {
+      setHasSyncedPasswordStatus(false);
+      return null;
+    }
+
+    const requestId = ++passwordStatusRequestRef.current;
+    setIsCheckingPasswordStatus(true);
+    setHasSyncedPasswordStatus(false);
+
+    try {
+      const response = await fetch(`${edgeFunctionUrl}/password-status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          phone: user.phone,
+        }),
+      });
+
+      const data = await response.json().catch(() => null);
+      if (!response.ok || requestId !== passwordStatusRequestRef.current) {
+        return null;
       }
-    };
 
-    void loadPasswordStatus();
+      const latestUser = useAuthStore.getState().user;
+      if (latestUser) {
+        setUser({ ...latestUser, hasPassword: Boolean(data?.hasPassword) });
+      }
+      setHasSyncedPasswordStatus(true);
+      return Boolean(data?.hasPassword);
+    } catch (error) {
+      console.error('Load password status error:', error);
+      return null;
+    } finally {
+      if (requestId === passwordStatusRequestRef.current) {
+        setIsCheckingPasswordStatus(false);
+      }
+    }
+  };
 
+  useEffect(() => {
+    if (!user?.id || !user.phone) {
+      setHasSyncedPasswordStatus(false);
+      setIsCheckingPasswordStatus(false);
+      return;
+    }
+
+    void syncPasswordStatus();
+  }, [edgeFunctionUrl, user?.id, user?.phone]);
+
+  useEffect(() => {
     return () => {
-      cancelled = true;
+      clearPasswordCodeCountdown();
     };
-  }, [edgeFunctionUrl, setUser, user]);
+  }, []);
 
   const activeSubscription = user
     ? getActiveSubscription(user.id)
     : null;
-  const hasPasswordStatusKnown = user?.hasPassword !== undefined;
+  const hasPasswordStatusKnown = hasSyncedPasswordStatus && user?.hasPassword !== undefined;
   const hasPassword = Boolean(user?.hasPassword);
 
   // 格式化会员到期日期
@@ -272,26 +317,90 @@ export function ProfilePage() {
   };
 
   const resetPasswordForm = () => {
-    setCurrentPassword('');
+    setPasswordCode('');
     setNewPassword('');
     setConfirmPassword('');
   };
 
-  const handleOpenPasswordDialog = () => {
-    if (isCheckingPasswordStatus || !hasPasswordStatusKnown) {
+  const handleOpenPasswordDialog = async () => {
+    if (!user) return;
+
+    if (isCheckingPasswordStatus) {
       toast.info('正在同步密码状态，请稍后再试');
       return;
+    }
+
+    if (!hasPasswordStatusKnown) {
+      const latestStatus = await syncPasswordStatus();
+      if (latestStatus === null) {
+        toast.error('密码状态同步失败，请稍后重试');
+        return;
+      }
     }
 
     resetPasswordForm();
     setIsPasswordDialogOpen(true);
   };
 
+  const handleSendPasswordCode = () => {
+    if (!user?.phone || !hasPassword || isSendingPasswordCode || passwordCodeCountdown > 0) {
+      return;
+    }
+
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    if (!supabaseUrl) {
+      toast.error('系统配置错误');
+      return;
+    }
+
+    setIsSendingPasswordCode(true);
+    startPasswordCodeCountdown(60);
+    toast.success('验证码已发送，请注意查收');
+
+    void (async () => {
+      try {
+        const response = await fetch(`${supabaseUrl}/functions/v1/sms-auth`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'send', phone: user.phone.trim() }),
+        });
+
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          const waitSeconds = Number(data?.waitSeconds || 0);
+          if (waitSeconds > 0) {
+            startPasswordCodeCountdown(waitSeconds);
+          } else {
+            clearPasswordCodeCountdown();
+            setPasswordCodeCountdown(0);
+          }
+          toast.error(data?.error || '验证码发送失败，请稍后重试');
+          return;
+        }
+
+        if (data?.code) {
+          toast.success(`开发模式：验证码 ${data.code}`, { duration: 6000 });
+        }
+      } catch (error: any) {
+        clearPasswordCodeCountdown();
+        setPasswordCodeCountdown(0);
+        toast.error(error?.message || '验证码发送失败，请稍后重试');
+      } finally {
+        setIsSendingPasswordCode(false);
+      }
+    })();
+  };
+
   const handleSavePassword = async () => {
     if (!user) return;
 
-    if (hasPassword && !currentPassword) {
-      toast.error('请输入当前密码');
+    if (!hasPasswordStatusKnown) {
+      toast.error('密码状态尚未同步完成，请稍后再试');
+      return;
+    }
+
+    if (hasPassword && passwordCode.trim().length !== 6) {
+      toast.error('请输入6位验证码');
       return;
     }
 
@@ -316,7 +425,7 @@ export function ProfilePage() {
         body: JSON.stringify({
           userId: user.id,
           phone: user.phone,
-          currentPassword: currentPassword || undefined,
+          verificationCode: hasPassword ? passwordCode.trim() : undefined,
           newPassword,
         }),
       });
@@ -327,6 +436,26 @@ export function ProfilePage() {
         const normalized = rawError.toLowerCase();
 
         if (
+          rawError.includes('请输入验证码') ||
+          rawError.includes('验证码错误') ||
+          rawError.includes('验证码已过期') ||
+          rawError.includes('错误次数过多')
+        ) {
+          if (!hasPassword) {
+            const latestUser = useAuthStore.getState().user;
+            if (latestUser) {
+              setUser({ ...latestUser, hasPassword: true });
+            }
+            setHasSyncedPasswordStatus(true);
+          }
+          throw new Error(
+            rawError.includes('请输入验证码')
+              ? '当前账号已设置密码，请先获取验证码后再修改。'
+              : rawError
+          );
+        }
+
+        if (
           rawError.includes('请输入当前密码') ||
           rawError.includes('当前密码错误') ||
           rawError.includes('当前密码不正确') ||
@@ -334,10 +463,12 @@ export function ProfilePage() {
           normalized.includes('invalid password') ||
           normalized.includes('wrong password')
         ) {
-          if (!hasPassword) {
-            setUser({ ...user, hasPassword: true });
+          const latestUser = useAuthStore.getState().user;
+          if (latestUser) {
+            setUser({ ...latestUser, hasPassword: true });
           }
-          throw new Error(rawError.includes('请输入当前密码') ? '当前账号已设置密码，请先输入当前密码再修改。' : '当前密码错误，请重新输入');
+          setHasSyncedPasswordStatus(true);
+          throw new Error('当前账号已设置密码，请先获取验证码后再修改。');
         }
 
         if (
@@ -351,7 +482,11 @@ export function ProfilePage() {
         throw new Error(rawError || '设置密码失败，请稍后重试');
       }
 
-      setUser({ ...user, hasPassword: true });
+      const latestUser = useAuthStore.getState().user;
+      if (latestUser) {
+        setUser({ ...latestUser, hasPassword: true });
+      }
+      setHasSyncedPasswordStatus(true);
       toast.success(hasPassword ? '密码修改成功' : '密码设置成功');
       setIsPasswordDialogOpen(false);
       resetPasswordForm();
@@ -583,7 +718,7 @@ export function ProfilePage() {
         : !hasPasswordStatusKnown
         ? '待同步'
         : hasPassword
-        ? '已设置，修改需输入当前密码'
+        ? '已设置，修改需输入验证码'
         : '未设置',
       onClick: handleOpenPasswordDialog
     },
@@ -775,7 +910,7 @@ export function ProfilePage() {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{hasPassword ? '修改登录密码' : '设置登录密码'}</DialogTitle>
+            <DialogTitle>{hasPassword ? '修改密码' : '设置密码'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-500">
@@ -783,18 +918,31 @@ export function ProfilePage() {
             </div>
             <div className="rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-600">
               {hasPassword
-                ? '当前账号已设置登录密码，本次操作为修改密码，需要先输入当前密码。'
+                ? '当前账号已设置登录密码，修改密码需先获取短信验证码。'
                 : '当前账号还未设置登录密码，本次操作为首次设置密码。'}
             </div>
             {hasPassword && (
               <div className="space-y-2">
-                <Label>当前密码</Label>
-                <Input
-                  type="password"
-                  placeholder="请输入当前密码"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                />
+                <Label>验证码</Label>
+                <div className="flex items-center gap-3">
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="请输入6位验证码"
+                    value={passwordCode}
+                    onChange={(e) => setPasswordCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="shrink-0"
+                    disabled={passwordCodeCountdown > 0 || isSendingPasswordCode}
+                    onClick={handleSendPasswordCode}
+                  >
+                    {passwordCodeCountdown > 0 ? `${passwordCodeCountdown}s` : '获取验证码'}
+                  </Button>
+                </div>
               </div>
             )}
             <div className="space-y-2">

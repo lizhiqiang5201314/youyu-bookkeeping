@@ -279,34 +279,12 @@ export function LoginPage() {
 
     if (isSending || countdown > 0) return;
 
-    setIsSending(true);
-
-    try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      
-      if (!supabaseUrl) {
-        throw new Error('系统配置错误');
-      }
-
-      toast.info('验证码发送中，请稍候...');
-
-      const response = await fetch(`${supabaseUrl}/functions/v1/sms-auth`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'send', phone: phone.trim() }),
-      });
-
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(data?.error || '发送失败');
-      }
-
+    const startCountdown = (seconds = 60) => {
       if (countdownTimerRef.current) {
         clearInterval(countdownTimerRef.current);
       }
 
-      setCountdown(60);
+      setCountdown(seconds);
       countdownTimerRef.current = setInterval(() => {
         setCountdown((prev) => {
           if (prev <= 1) {
@@ -319,22 +297,57 @@ export function LoginPage() {
           return prev - 1;
         });
       }, 1000);
+    };
 
-      if (data?.code) {
-        toast.success(`开发模式：验证码 ${data.code}`, { duration: 6000 });
-      } else {
-        toast.success('验证码已发送，请注意查收');
-      }
-    } catch (error: any) {
+    const clearCountdown = () => {
       if (countdownTimerRef.current) {
         clearInterval(countdownTimerRef.current);
         countdownTimerRef.current = null;
       }
       setCountdown(0);
-      toast.error(error?.message || '验证码发送失败，请稍后重试');
-    } finally {
-      setIsSending(false);
+    };
+
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    if (!supabaseUrl) {
+      toast.error('系统配置错误');
+      return;
     }
+
+    setIsSending(true);
+    startCountdown(60);
+    toast.success('验证码已发送，请注意查收');
+
+    void (async () => {
+      try {
+        const response = await fetch(`${supabaseUrl}/functions/v1/sms-auth`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'send', phone: phone.trim() }),
+        });
+
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          const waitSeconds = Number(data?.waitSeconds || 0);
+          if (waitSeconds > 0) {
+            startCountdown(waitSeconds);
+          } else {
+            clearCountdown();
+          }
+          toast.error(data?.error || '验证码发送失败，请稍后重试');
+          return;
+        }
+
+        if (data?.code) {
+          toast.success(`开发模式：验证码 ${data.code}`, { duration: 6000 });
+        }
+      } catch (error: any) {
+        clearCountdown();
+        toast.error(error?.message || '验证码发送失败，请稍后重试');
+      } finally {
+        setIsSending(false);
+      }
+    })();
   };
 
   // 登录
@@ -560,7 +573,7 @@ export function LoginPage() {
                       : 'text-teal-500'
                   }`}
                 >
-                  {isSending ? '发送中...' : countdown > 0 ? `${countdown}s` : '获取验证码'}
+                  {countdown > 0 ? `${countdown}s` : isSending ? '发送中...' : '获取验证码'}
                 </button>
               </div>
             ) : (

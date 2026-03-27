@@ -21,6 +21,8 @@ Deno.serve(async (req) => {
       );
     }
 
+    const normalizePhone = (value: string) => value.trim().replace(/\s/g, '').replace(/^\+?86/, '');
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
@@ -38,7 +40,7 @@ Deno.serve(async (req) => {
       .eq('id', userId)
       .single();
 
-    if (error || !user || user.phone !== phone) {
+    if (error || !user || normalizePhone(user.phone) !== normalizePhone(phone)) {
       return new Response(
         JSON.stringify({ error: '用户不存在' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
