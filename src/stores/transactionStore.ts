@@ -239,11 +239,18 @@ export const useTransactionStore = create<TransactionState>()(
               .select()
               .single();
 
-            if (!error && txData) {
+            if (error) {
+              console.error('Sync transaction error:', error);
+              toast.error('记账同步失败，将在网络恢复后自动重试');
+              return;
+            }
+
+            if (txData) {
               await db.transactions.update(transaction.id, { synced: true });
             }
           } catch (error) {
             console.error('Sync transaction error:', error);
+            toast.error('记账同步失败，将在网络恢复后自动重试');
           }
         })();
 
@@ -285,10 +292,16 @@ export const useTransactionStore = create<TransactionState>()(
             if (data.recordDate) updateData.record_date = data.recordDate;
             if (data.images) updateData.images = data.images;
 
-            await supabase.from('transactions').update(updateData).eq('id', id);
+            const { error } = await supabase.from('transactions').update(updateData).eq('id', id);
+            if (error) {
+              console.error('Update transaction sync error:', error);
+              toast.error('修改同步失败，将在网络恢复后自动重试');
+              return;
+            }
             await db.transactions.update(id, { synced: true });
           } catch (error) {
             console.error('Update transaction sync error:', error);
+            toast.error('修改同步失败，将在网络恢复后自动重试');
           }
         })();
       },
@@ -313,9 +326,14 @@ export const useTransactionStore = create<TransactionState>()(
         // 2. 后台同步云端
         (async () => {
           try {
-            await supabase.from('transactions').delete().eq('id', id);
+            const { error } = await supabase.from('transactions').delete().eq('id', id);
+            if (error) {
+              console.error('Delete transaction sync error:', error);
+              toast.error('删除同步失败，将在网络恢复后自动重试');
+            }
           } catch (error) {
             console.error('Delete transaction sync error:', error);
+            toast.error('删除同步失败，将在网络恢复后自动重试');
           }
         })();
       },
