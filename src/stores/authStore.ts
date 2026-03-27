@@ -67,6 +67,7 @@ export const useAuthStore = create<AuthState>()(
             ) {
               friendlyError = '密码错误，请重新输入';
             } else if (
+              rawError.includes('账号不存在') ||
               rawError.includes('用户不存在') ||
               rawError.includes('未注册') ||
               normalized.includes('user not found') ||
@@ -96,7 +97,17 @@ export const useAuthStore = create<AuthState>()(
           return true;
         } catch (error: any) {
           console.error('❌ 登录异常:', error);
-          set({ isLoading: false, error: error?.message || '登录失败' });
+          const message = String(error?.message || '');
+          const normalized = message.toLowerCase();
+          const friendlyError = (
+            message.includes('Failed to fetch') ||
+            normalized.includes('failed to fetch') ||
+            normalized.includes('cors') ||
+            normalized.includes('networkerror')
+          )
+            ? '登录服务暂时不可用，请稍后重试'
+            : (message || '登录失败');
+          set({ isLoading: false, error: friendlyError });
           return false;
         }
       },

@@ -72,6 +72,12 @@ jobs:
           echo "ℹ️ REMOTE_PORT 未配置，将默认使用 22"
         fi
 
+        if [ -n "${{ secrets.SUPABASE_ACCESS_TOKEN }}" ]; then
+          echo "✅ SUPABASE_ACCESS_TOKEN 已配置，将自动部署 Edge Functions"
+        else
+          echo "ℹ️ SUPABASE_ACCESS_TOKEN 未配置，本次不会自动部署 Edge Functions"
+        fi
+
     - name: Prepare production env
       env:
         VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
@@ -89,6 +95,20 @@ jobs:
         VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
         VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
       run: npm run build
+
+    - name: Deploy Supabase Edge Functions
+      if: ${{ secrets.SUPABASE_ACCESS_TOKEN != '' }}
+      env:
+        SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      run: |
+        set -eu
+        echo "🚀 部署 Supabase Edge Functions..."
+        npx supabase functions deploy sms-auth --project-ref rsytwtcavbbmbjchjhkk --no-verify-jwt --use-api
+        npx supabase functions deploy password-login --project-ref rsytwtcavbbmbjchjhkk --no-verify-jwt --use-api
+        npx supabase functions deploy password-register --project-ref rsytwtcavbbmbjchjhkk --no-verify-jwt --use-api
+        npx supabase functions deploy password-status --project-ref rsytwtcavbbmbjchjhkk --no-verify-jwt --use-api
+        npx supabase functions deploy set-password --project-ref rsytwtcavbbmbjchjhkk --no-verify-jwt --use-api
+        echo "✅ Supabase Edge Functions 部署完成"
 
     - name: Deploy to server
       env:

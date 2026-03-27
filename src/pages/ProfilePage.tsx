@@ -326,6 +326,7 @@ export function ProfilePage() {
 
         if (
           rawError.includes('当前密码错误') ||
+          rawError.includes('当前密码不正确') ||
           rawError.includes('密码错误') ||
           normalized.includes('invalid password') ||
           normalized.includes('wrong password')

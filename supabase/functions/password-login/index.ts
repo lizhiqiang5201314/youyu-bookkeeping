@@ -48,8 +48,8 @@ Deno.serve(async (req) => {
 
     if (userError || !user) {
       return new Response(
-        JSON.stringify({ error: '账号不存在' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: '用户不存在' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 

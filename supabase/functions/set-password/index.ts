@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
       const isValid = await bcrypt.compare(currentPassword, user.password_hash);
       if (!isValid) {
         return new Response(
-          JSON.stringify({ error: '当前密码不正确' }),
+          JSON.stringify({ error: '当前密码错误' }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
